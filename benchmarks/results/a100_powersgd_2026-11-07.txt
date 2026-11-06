@@ -1,0 +1,38 @@
+PowerSGD (torch/distributed/algorithms/ddp_comm_hooks/powerSGD_hook.py) orthogonalization on A100-SXM4-80GB, torch 2.7.1, FP32 highest.
+torch = psh._orthogonalize (batched Householder QR for rank>2 in FP32); GS = psh._orthogonalize_gram_schmidt (per-column Python loop,
+used for rank<=2 and for fp16/bf16). cqr2/scqr3 = cholqr compiled (fullgraph, dynamic=False). ms per call, mean of 50.
+
+b x n x r | torch | GS fp32 | GS bf16 | cqr2 | scqr3 | cqr2 speedup vs torch
+ 1x768x4   |  0.171 |  0.371 |  0.367 |  0.806 |  1.088 |   0.2x
+ 1x768x8   |  0.168 |  0.776 |  0.769 |  0.924 |  1.134 |   0.2x
+ 1x768x16  |  0.221 |  1.607 |  1.633 |  0.831 |  1.193 |   0.3x
+ 1x768x32  |  0.289 |  3.268 |  3.221 |  0.840 |  1.135 |   0.3x
+ 1x768x64  |  0.484 |  6.465 |  6.448 |  0.787 |  1.093 |   0.6x
+ 1x3072x4   |  0.193 |  0.376 |  0.370 |  0.778 |  1.085 |   0.2x
+ 1x3072x8   |  0.178 |  0.769 |  0.929 |  0.812 |  1.127 |   0.2x
+ 1x3072x16  |  0.277 |  1.578 |  1.677 |  0.815 |  1.127 |   0.3x
+ 1x3072x32  |  0.473 |  3.144 |  3.331 |  0.811 |  1.110 |   0.6x
+ 1x3072x64  |  0.870 |  6.530 |  6.410 |  0.775 |  1.073 |   1.1x
+12x768x4   |  1.354 |  0.367 |  0.366 |  0.798 |  1.058 |   1.7x
+12x768x8   |  1.483 |  0.785 |  0.777 |  0.796 |  1.115 |   1.9x
+12x768x16  |  1.946 |  1.571 |  1.565 |  0.817 |  1.121 |   2.4x
+12x768x32  |  2.502 |  3.241 |  3.181 |  0.860 |  1.274 |   2.9x
+12x768x64  |  4.420 |  6.318 |  6.319 |  0.849 |  1.168 |   5.2x
+12x3072x4   |  0.984 |  0.371 |  0.369 |  1.265 |  2.304 |   0.8x
+12x3072x8   |  1.423 |  0.803 |  0.792 |  1.278 |  1.914 |   1.1x
+12x3072x16  |  2.384 |  1.690 |  1.623 |  1.303 |  2.375 |   1.8x
+12x3072x32  |  4.300 |  3.271 |  3.248 |  1.373 |  2.055 |   3.1x
+12x3072x64  |  8.197 |  6.815 |  7.120 |  1.536 |  2.297 |   5.3x
+
+Overhead floor (cqr2): eager / compiled / compiled mode="reduce-overhead" (CUDA graphs); cholesky_ex alone; triangular inverse alone
+1x768x8:   torch 0.168 | eager 0.984 | compiled 0.826 | cudagraph 0.239 | cholesky_ex 0.045 | tri-inverse 0.047
+1x3072x32: torch 0.475 | eager 1.022 | compiled 0.858 | cudagraph 0.211 | cholesky_ex 0.045 | tri-inverse 0.048
+12x768x16: torch 2.278 | eager 0.990 | compiled 0.840 | cudagraph 0.496 | cholesky_ex 0.040 | tri-inverse 0.047
+12x3072x32: torch 4.251 | eager 1.651 | compiled 1.372 | cudagraph 1.339 | cholesky_ex 0.050 | tri-inverse 0.048
+
+Conditioning in real training: DDP world_size=1 with the real powerSGD_hook (start_powerSGD_iter=10, warm start, error feedback,
+min_compression_rate=1), 6-layer pre-LN transformer d=384, char-level tinyshakespeare, AdamW 3e-4, 400 steps, sampled every 10 steps.
+rank 4:  final loss 2.387 | cond over 2106 calls: median 2.7e+00, 99% 1.5e+01, max 6.9e+01
+   worst cond 6.9e+01 (1,384,4): orth torch 1.6e-07 cqr2 6.8e-07 scqr3 5.3e-07
+rank 32: final loss 2.276 | cond over 2106 calls: median 2.9e+01, 99% 2.1e+02, max 1.9e+03
+   worst cond 1.9e+03 (1,384,32): orth torch 8.9e-07 cqr2 7.6e-07 scqr3 6.5e-07
