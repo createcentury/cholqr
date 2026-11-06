@@ -1,0 +1,16 @@
+NVIDIA A100-SXM4-80GB 2.7.1+cu126  (Colab; float32_matmul_precision=highest; compiled fullgraph; mean of 20 calls, ms)
+shape | linalg.qr | scqr3 eager | scqr3 | cqr2 | robust | speedup scqr3 / cqr2
+40x768x210 |   50.47 |   3.77 |   3.58 |   2.39 |   3.72 | 14.1x / 21.1x
+10x3072x210 |   25.49 |   4.33 |   4.20 |   2.80 |   3.99 |  6.1x /  9.1x
+16x4096x256 |   63.18 |   6.58 |   6.61 |   5.08 |   6.40 |  9.6x / 12.4x
+4x768x64 |    1.48 |   1.85 |   1.36 |   0.98 |   1.41 |  1.1x /  1.5x
+
+accuracy, 3072x210, ||Q^T Q - I||_F; kappa | highest: scqr3 cqr2 robust | high(TF32): scqr3 cqr2 robust
+  1e+01 | 1.5e-06 1.6e-06 1.2e-06 | 1.4e-04 1.9e-04 1.8e-04
+  7e+01 | 1.6e-06 1.5e-06 1.2e-06 | 1.9e-04 1.7e-04 1.8e-04
+  1e+03 | 1.6e-06 2.4e-06 1.1e-06 | 1.9e-04 2.0e-03 1.8e-04
+  4e+03 | 1.6e-06 2.4e-06 1.6e-06 | 1.9e-04 6.8e-03 2.0e-04
+  1e+04 | 1.5e-06 2.9e-06 1.5e-06 | 2.1e-04 1.5e+02 1.8e-04
+  1e+06 | 2.4e-06 1.8e+02 1.6e-06 | 2.4e-04 1.8e+02 1.8e-04
+  1e+08 | 6.4e+01 1.9e+02 1.5e-06 | 2.8e-04 1.9e+02 1.8e-04
+return_r: ||QR-Y||/||Y|| = 4.1e-07, orth 1.5e-06 (kappa 1e4)
