@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cholqr"
+version = "0.1.0"
+description = "Fast, compile-friendly shifted CholeskyQR3 for batched tall-skinny matrices in PyTorch"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Soki Fukuda" }]
+dependencies = ["torch>=2.1"]
+keywords = ["qr", "cholesky", "randomized-svd", "muon", "pytorch", "gpu"]
+classifiers = ["Programming Language :: Python :: 3", "Topic :: Scientific/Engineering :: Mathematics"]
+
+[project.urls]
+Homepage = "https://github.com/createcentury/cholqr"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cholqr"]
