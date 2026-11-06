@@ -176,3 +176,33 @@ def test_rcqr_compiles():
 def test_rcqr_rejects_robust():
     with pytest.raises(ValueError):
         cholesky_qr(torch.randn(100, 10), method="rcqr", robust=True)
+
+
+# ---- method="auto" ----
+def test_auto_single_small_uses_householder_and_is_accurate():
+    Y = make_spectrum(3072, 32, 1e8, "powerlaw")              # Householder handles any conditioning
+    Q, R = cholesky_qr(Y, method="auto", return_r=True)
+    assert orth_err(Q) < 1e-5
+    assert (R.diagonal() >= 0).all() and torch.allclose(R, R.triu())
+    assert ((Q.double() @ R.double() - Y.double()).norm() / Y.double().norm()).item() < 1e-5
+
+
+def test_auto_batched_matches_scqr3():
+    Y = torch.randn(4, 500, 30)
+    assert torch.allclose(cholesky_qr(Y, method="auto"), cholesky_qr(Y), atol=0, rtol=0)
+    Y1 = torch.randn(1, 600, 100)                            # r > 64 -> scqr3 even for a single matrix
+    assert torch.allclose(cholesky_qr(Y1, method="auto"), cholesky_qr(Y1), atol=0, rtol=0)
+
+
+def test_auto_half_precision_and_robust():
+    Y = torch.randn(700, 20).bfloat16()
+    Q = cholesky_qr(Y, method="auto")
+    assert Q.dtype == torch.bfloat16 and orth_err(Q.float()) < 2e-2
+    assert orth_err(cholesky_qr(torch.randn(3, 400, 20), method="auto", robust=True)) < 5e-5
+
+
+def test_auto_compiles():
+    torch._dynamo.reset()
+    for shape in [(500, 20), (3, 500, 20)]:
+        f = torch.compile(lambda Y: cholesky_qr(Y, method="auto"), fullgraph=True, dynamic=False)
+        assert orth_err(f(torch.randn(*shape))) < 5e-5

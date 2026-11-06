@@ -6,7 +6,8 @@ import torch
 
 __all__ = ["cholesky_qr", "orthonormal_basis"]
 
-_METHODS = ("scqr3", "cqr2", "rcqr")
+_METHODS = ("scqr3", "cqr2", "rcqr", "auto")
+_AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A100 measurements, see README)
 
 
 def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, return_r: bool = False,
@@ -23,6 +24,10 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     ``"cqr2"``: CholeskyQR2 (Yamamoto, Nakatsukasa, Yanagisawa, Fukaya, 2015). Two passes, about 1/3 cheaper. Use it
     **only for well-conditioned inputs**: in FP32 it breaks down beyond cond(Y) ~ u^{-1/2} ~ 4e3.
 
+    ``"auto"``: dispatch on shape. A single matrix (no batch, or batch size 1) with r <= 64 goes to Householder
+    ``torch.linalg.qr`` (in FP32, with R's diagonal made non-negative), because CholeskyQR's fixed launch overhead
+    (~0.2-0.8 ms) dominates there. Everything else uses ``"scqr3"`` (honouring ``robust``).
+
     ``"rcqr"``: randomized (sketch-preconditioned) CholeskyQR, as in Balabanov (2022), Higgins et al. (2024) and the
     Dion optimizer. A Gaussian sketch S (k x m, k = oversample * r rounded up to a multiple of 128, as in Dion) gives
     R0 from a Householder QR of the small matrix S Y; Y R0^{-1} is then well conditioned and one CholeskyQR pass
@@ -35,7 +40,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
 
     Args:
         Y: real tensor of shape (..., m, r) with r <= m.
-        method: ``"scqr3"``, ``"cqr2"`` or ``"rcqr"``.
+        method: ``"scqr3"``, ``"cqr2"``, ``"rcqr"`` or ``"auto"``.
         robust: (scqr3 only) run the first pass in FP64.
         return_r: also return the upper-triangular factor R with Y = Q R.
         out_dtype: dtype of the results (default: dtype of Y).
@@ -53,8 +58,8 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         raise TypeError("cholesky_qr supports real tensors only (got a complex dtype)")
     if method not in _METHODS:
         raise ValueError(f"method must be one of {_METHODS}, got {method!r}")
-    if robust and method != "scqr3":
-        raise ValueError("robust=True is only available for method='scqr3'")
+    if robust and method not in ("scqr3", "auto"):
+        raise ValueError("robust=True is only available for method='scqr3' or 'auto'")
     # is_compiling() must be evaluated first: older Dynamo (e.g. torch 2.7) cannot trace
     # get_float32_matmul_precision() (returns a str) and fails under fullgraph=True.
     if not torch.compiler.is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() != "highest":
@@ -65,6 +70,11 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     m, r = Y.shape[-2], Y.shape[-1]
     if r > m:
         raise ValueError(f"cholesky_qr expects tall-skinny input (r <= m), got m={m}, r={r}")
+    if method == "auto":
+        batch = math.prod(Y.shape[:-2])
+        if batch <= 1 and r <= _AUTO_QR_MAX_R:
+            return _householder(Y, return_r, out_dtype)
+        method = "scqr3"
     n_pass = passes if passes is not None else {"scqr3": 3, "cqr2": 2, "rcqr": 1}[method]
     u = torch.finfo(torch.float32).eps
     Q = Y.double() if robust else Y.float()
@@ -82,19 +92,20 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         Q = torch.linalg.solve_triangular(R0, Q, upper=True, left=False)
         if return_r:
             R = R0 @ torch.diag_embed(d0.squeeze(-2))
+    eye = torch.eye(r, device=Q.device, dtype=Q.dtype)                    # built once (torch.eye is costly to launch)
     for i in range(n_pass):
         if robust and i == 1:
             Q = Q.float()
             R = R.float() if R is not None else None
-        eye = torch.eye(r, device=Q.device, dtype=Q.dtype)
+            eye = eye.float()
         d = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)                 # (..., 1, r) column norms
         Q = Q / d
         G = Q.mT @ Q
-        tr = G.diagonal(dim1=-2, dim2=-1).sum(dim=-1)[..., None, None]
+        # columns have unit norm, so tr(G) = r (zero columns only make it smaller, i.e. the shift is conservative)
         if method == "scqr3" and i == 0:
-            s = (1e-14 if robust else shift) * tr
+            s = (1e-14 if robust else shift) * r
         else:
-            s = (u / r) * tr                                                  # O(u) safeguard
+            s = u                                                             # O(u) safeguard, = (u / r) * tr(G)
         L, info = torch.linalg.cholesky_ex(G + (s + 1e-30) * eye)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
         ok = (info == 0)[..., None, None]
@@ -109,6 +120,17 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     if not return_r:
         return Q
     return Q, R.float().to(dt)
+
+
+def _householder(Y, return_r, out_dtype):
+    """torch.linalg.qr in FP32 (half precision is not supported by it), normalized so that diag(R) >= 0."""
+    Q, R = torch.linalg.qr(Y.float(), mode="reduced")
+    sgn = torch.where(R.diagonal(dim1=-2, dim2=-1) < 0, -1.0, 1.0)       # (..., r)
+    Q = Q * sgn[..., None, :]
+    dt = Y.dtype if out_dtype is None else out_dtype
+    if not return_r:
+        return Q.to(dt)
+    return Q.to(dt), (R * sgn[..., :, None]).to(dt)
 
 
 def orthonormal_basis(Y: torch.Tensor, **kwargs) -> torch.Tensor:
