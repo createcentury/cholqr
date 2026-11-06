@@ -1,0 +1,29 @@
+cholqr v0.3 on A100-SXM4-80GB, torch 2.7.1+cu126, FP32 highest, mean of 50 calls (ms). Clean process.
+
+method="auto" vs fixed methods, compiled (fullgraph, dynamic=False)
+  1x768x32: linalg.qr  0.225 | scqr3  0.990 | auto  0.290
+  1x3072x64: linalg.qr  0.852 | scqr3  1.029 | auto  0.858
+  1x3072x210: linalg.qr  2.756 | scqr3  1.010 | auto  0.991
+  4x768x64: linalg.qr  1.477 | scqr3  1.053 | auto  1.049
+  40x768x210: linalg.qr 50.037 | scqr3  3.534 | auto  3.524
+  10x3072x210: linalg.qr 25.282 | scqr3  4.128 | auto  4.118
+
+eager (single small matrices): linalg.qr / cqr2 / scqr3 / auto
+  1x768x8:   0.165 | 1.055 | 1.592 | 0.349
+  1x3072x32: 0.460 | 1.060 | 1.545 | 0.479
+  12x768x16: 2.267 | 1.037 | 1.533 | 1.521
+
+cholqr.contrib.powersgd.orthogonalize_ vs torch's powerSGD_hook._orthogonalize (eager; orth = max ||Q^T Q - I||_F)
+  1x768x4 float32 : original  0.162 | cholqr  0.145 |   1.1x | orth 2.6e-07 -> 2.6e-07
+  1x768x32 float32 : original  0.237 | cholqr  0.233 |   1.0x | orth 7.0e-07 -> 7.0e-07
+  1x3072x64 float32 : original  0.706 | cholqr  0.703 |   1.0x | orth 1.2e-06 -> 1.2e-06
+  12x768x16 float32 : original  1.846 | cholqr  1.099 |   1.7x | orth 7.4e-07 -> 1.8e-06
+  12x3072x32 float32 : original  4.240 | cholqr  2.206 |   1.9x | orth 1.0e-06 -> 4.7e-06
+  12x3072x64 float32 : original  8.165 | cholqr  2.387 |   3.4x | orth 1.3e-06 -> 6.5e-06
+  1x768x4 bfloat16: original  0.366 | cholqr  0.159 |   2.3x | orth 5.2e-03 -> 6.1e-04
+  1x768x32 bfloat16: original  3.382 | cholqr  0.241 |  14.0x | orth 1.7e-02 -> 2.8e-03
+  1x3072x64 bfloat16: original  6.306 | cholqr  0.710 |   8.9x | orth 2.5e-02 -> 2.8e-03
+  12x768x16 bfloat16: original  1.556 | cholqr  1.082 |   1.4x | orth 1.3e-02 -> 1.7e-03
+  12x3072x32 bfloat16: original  3.239 | cholqr  2.213 |   1.5x | orth 1.8e-02 -> 1.6e-03
+  12x3072x64 bfloat16: original  6.545 | cholqr  2.415 |   2.7x | orth 2.6e-02 -> 2.9e-03
+(The batched path includes an explicit orthogonality check and one host sync for the fallback.)

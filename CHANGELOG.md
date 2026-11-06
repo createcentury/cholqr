@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-07)
+- `method="auto"`: Householder `torch.linalg.qr` for a single matrix with r <= 64 (where CholeskyQR's launch overhead dominates), `"scqr3"` otherwise. Accepts `robust`.
+- `cholqr.contrib.powersgd`: drop-in for PyTorch's PowerSGD `_orthogonalize` (`patch()` / `unpatch()`). Single matrices: upcast to FP32 + Householder. Batches: CholeskyQR2 with a verified fallback. A100 bf16: up to 14x faster and about 10x more orthogonal.
+- Fewer kernel launches per pass: the identity is built once, and the trace is not recomputed (columns are unit-norm).
 - `method="rcqr"`: randomized (sketch-preconditioned) CholeskyQR (Balabanov 2022; Garrison & Ipsen 2024; as in Dion). Robust in FP32 up to cond(Y) >= 1e8; slow for batches on GPU (batched Householder QR of the sketch). Options `oversample`, `generator`.
 - A100 comparison of all methods: `benchmarks/results/a100_rcqr_2026-11-07.txt`.
 
