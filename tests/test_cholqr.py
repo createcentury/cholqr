@@ -93,3 +93,47 @@ def test_autograd_matches_householder():
     g1, = torch.autograd.grad(loss(cholesky_qr(Y, out_dtype=torch.float64)), Y)
     g2, = torch.autograd.grad(loss(torch.linalg.qr(Y)[0]), Y)
     assert ((g1 - g2).norm() / g2.norm()).item() < 1e-5
+
+
+@pytest.mark.parametrize("kind", ["geometric", "powerlaw"])
+@pytest.mark.parametrize("kappa", [7e1, 1e3, 4e3])
+def test_cqr2_well_conditioned(kind, kappa):
+    Y = make_spectrum(3072, 210, kappa, kind)
+    assert orth_err(cholesky_qr(Y, method="cqr2")) < 5e-5
+
+
+def test_cqr2_breaks_down_beyond_range():
+    Y = make_spectrum(3072, 210, 1e4, "geometric")
+    assert orth_err(cholesky_qr(Y, method="cqr2")) > 1.0
+
+
+@pytest.mark.parametrize("method,robust,kappa", [("scqr3", False, 1e5), ("scqr3", True, 1e7), ("cqr2", False, 1e3)])
+def test_return_r_reconstructs(method, robust, kappa):
+    Y = make_spectrum(1024, 64, kappa, "powerlaw")
+    Q, R = cholesky_qr(Y, method=method, robust=robust, return_r=True)
+    rel = ((Q.double() @ R.double() - Y.double()).norm() / Y.double().norm()).item()
+    assert rel < 1e-5
+    assert torch.allclose(R.double(), torch.triu(R.double()), atol=1e-6 * R.double().abs().max().item())
+    assert orth_err(Q) < 5e-5
+
+
+def test_return_r_batched_and_dtype():
+    Y = torch.stack([make_spectrum(256, 16, 1e2, "geometric", seed=k) for k in range(3)])
+    Q, R = cholesky_qr(Y, return_r=True)
+    assert Q.shape == (3, 256, 16) and R.shape == (3, 16, 16)
+    assert torch.allclose(Q @ R, Y, atol=1e-4 * Y.abs().max().item())
+    Qb, Rb = cholesky_qr(Y.bfloat16(), return_r=True)
+    assert Qb.dtype == Rb.dtype == torch.bfloat16
+
+
+def test_invalid_method_and_robust_combo():
+    with pytest.raises(ValueError):
+        cholesky_qr(torch.randn(64, 8), method="householder")
+    with pytest.raises(ValueError):
+        cholesky_qr(torch.randn(64, 8), method="cqr2", robust=True)
+
+
+@pytest.mark.parametrize("kw", [dict(method="cqr2"), dict(return_r=True)])
+def test_compiles_without_graph_breaks_v02(kw):
+    explain = torch._dynamo.explain(cholesky_qr)(torch.randn(256, 32), **kw)
+    assert explain.graph_break_count == 0

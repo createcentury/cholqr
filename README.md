@@ -9,9 +9,22 @@ import torch
 from cholqr import cholesky_qr
 
 Y = torch.randn(40, 768, 210, device="cuda")       # batch of tall-skinny matrices
-Q = cholesky_qr(Y)                                 # orthonormal columns, same span as Y
+Q = cholesky_qr(Y)                                 # shifted CholeskyQR3 (default, safe)
+Q = cholesky_qr(Y, method="cqr2")                  # CholeskyQR2: ~1/3 cheaper, only for cond(Y) <~ 4e3
+Q = cholesky_qr(Y, robust=True)                    # FP64 first pass: cond(Y) up to >= 1e8
+Q, R = cholesky_qr(Y, return_r=True)               # also R (upper triangular), Y = Q R
 fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synchronization
 ```
+
+| method | passes | reliable range in FP32 (tested) | use when |
+|---|---|---|---|
+| `"scqr3"` (default) | 3 | cond(Y) ≲ 1e6 | general use |
+| `"scqr3"`, `robust=True` | 3 (first in FP64) | cond(Y) up to ≥ 1e8 | ill-conditioned inputs, data-center GPUs |
+| `"cqr2"` | 2 | cond(Y) ≲ 4e3 (= u^{-1/2}) | known well-conditioned inputs, e.g. sketches without power iteration |
+
+`"cqr2"` breaks down abruptly beyond its range: orthogonality is lost, and no error is raised. Use it only when you know the conditioning.
+
+**Example (randomized low-rank Muon on nanoGPT):** the measured cond(Y) is at most 70 without power iteration (h=0), so `"cqr2"` is safe there. With one power iteration (h=1) it reaches 4.5×10⁴, which needs `"scqr3"`.
 
 ## Why
 
@@ -67,6 +80,9 @@ These numbers were tested on 3072 x 210 inputs with geometric and power-law spec
   - The final low-rank update differs from an FP64 Householder reference by at most 7.6×10⁻⁵ (relative).
   - Sketches computed in bf16 are typically well inside the default range, because bf16 rounding caps their effective condition number.
 - Exactly rank-deficient or zero inputs return finite outputs (not an orthonormal basis of a larger space).
+- **TF32:** if TF32 matmul is enabled (`torch.set_float32_matmul_precision("high")`, common in training scripts on Ampere and newer GPUs), the Gram products lose precision.
+  - In CPU emulation: orthogonality degrades from ~1e-5 to ~2e-4 for `"scqr3"`/`robust`, and `"cqr2"` already fails near cond(Y) ~ 1e3.
+  - `cholqr` warns in that case. Wrap the call with `torch.set_float32_matmul_precision("highest")` if you need full accuracy.
 - Real dtypes only; complex inputs raise `TypeError`. Autograd works (gradients agree with Householder QR to ~1e-7 in tests). Runs on CUDA, CPU and Apple MPS.
 - Status: **experimental (0.x)**. The API may change. Issues and benchmarks on other GPUs are welcome.
 
