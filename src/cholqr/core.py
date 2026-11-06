@@ -38,6 +38,8 @@ def cholesky_qr(Y: torch.Tensor, shift: float = 1e-6, passes: int = 3, out_dtype
     """
     if Y.dim() < 2:
         raise ValueError("Y must have at least 2 dimensions (..., m, r)")
+    if Y.is_complex():
+        raise TypeError("cholesky_qr supports real tensors only (got a complex dtype)")
     m, r = Y.shape[-2], Y.shape[-1]
     if r > m:
         raise ValueError(f"cholesky_qr expects tall-skinny input (r <= m), got m={m}, r={r}")

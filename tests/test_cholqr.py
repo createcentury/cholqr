@@ -78,3 +78,18 @@ def test_rejects_wide_input():
 def test_compiles_without_graph_breaks(robust):
     explain = torch._dynamo.explain(cholesky_qr)(torch.randn(256, 32), robust=robust)
     assert explain.graph_break_count == 0
+
+
+def test_rejects_complex():
+    with pytest.raises(TypeError):
+        cholesky_qr(torch.randn(64, 8, dtype=torch.complex64))
+
+
+def test_autograd_matches_householder():
+    torch.manual_seed(0)
+    Y = torch.randn(64, 8, dtype=torch.float64, requires_grad=True)
+    W = torch.randn(64, 64, dtype=torch.float64)
+    loss = lambda Q: ((Q @ Q.mT) * W).sum()      # sign-invariant
+    g1, = torch.autograd.grad(loss(cholesky_qr(Y, out_dtype=torch.float64)), Y)
+    g2, = torch.autograd.grad(loss(torch.linalg.qr(Y)[0]), Y)
+    assert ((g1 - g2).norm() / g2.norm()).item() < 1e-5

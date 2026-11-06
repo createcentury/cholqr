@@ -67,6 +67,8 @@ These numbers were tested on 3072 x 210 inputs with geometric and power-law spec
   - The final low-rank update differs from an FP64 Householder reference by at most 7.6×10⁻⁵ (relative).
   - Sketches computed in bf16 are typically well inside the default range, because bf16 rounding caps their effective condition number.
 - Exactly rank-deficient or zero inputs return finite outputs (not an orthonormal basis of a larger space).
+- Real dtypes only; complex inputs raise `TypeError`. Autograd works (gradients agree with Householder QR to ~1e-7 in tests). Runs on CUDA, CPU and Apple MPS.
+- Status: **experimental (0.x)**. The API may change. Issues and benchmarks on other GPUs are welcome.
 
 ```python
 Q = cholesky_qr(Y)               # fast default, cond(Y) <~ 1e6
