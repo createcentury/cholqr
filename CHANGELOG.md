@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- `method="rcqr"`: randomized (sketch-preconditioned) CholeskyQR (Balabanov 2022; Garrison & Ipsen 2024; as in Dion). Robust in FP32 up to cond(Y) >= 1e8; slow for batches on GPU (batched Householder QR of the sketch). Options `oversample`, `generator`.
+- A100 comparison of all methods: `benchmarks/results/a100_rcqr_2026-11-07.txt`.
+
 ## 0.2.0 (2026-11-07)
 - `method="cqr2"`: CholeskyQR2 (two passes), about 1/3 cheaper; for well-conditioned inputs only (cond(Y) <~ 4e3 in FP32).
 - `return_r=True`: also return the upper-triangular R with Y = Q R (accumulated exactly across passes, including column scaling).

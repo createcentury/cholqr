@@ -20,7 +20,8 @@ fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synch
 |---|---|---|---|
 | `"scqr3"` (default) | 3 | cond(Y) ≲ 1e6 | general use |
 | `"scqr3"`, `robust=True` | 3 (first in FP64) | cond(Y) up to ≥ 1e8 | ill-conditioned inputs, data-center GPUs |
-| `"cqr2"` | 2 | cond(Y) ≲ 4e3 (= u^{-1/2}) | known well-conditioned inputs, e.g. sketches without power iteration |
+| `"cqr2"` | 2 | cond(Y) ≲ 4e3 (= u^{-1/2}; 1e4 measured on A100) | known well-conditioned inputs, e.g. sketches without power iteration |
+| `"rcqr"` | sketch + 1 | cond(Y) up to ≥ 1e8 (orth ≈ 7e-6) | single large matrices; **slow when batched** (its preconditioner is a batched Householder QR) |
 
 `"cqr2"` breaks down abruptly beyond its range: orthogonality is lost, and no error is raised. Use it only when you know the conditioning.
 
@@ -49,6 +50,7 @@ Library benchmark on an **NVIDIA A100-SXM4-80GB** (torch 2.7.1+cu126, FP32 with 
 | 16 x 4096 x 256 | 63.2 ms | 6.61 ms | 5.08 ms | 6.40 ms | **9.6x / 12.4x** |
 | 4 x 768 x 64 | 1.48 ms | 1.36 ms | 0.98 ms | 1.41 ms | 1.1x / 1.5x |
 
+- `"rcqr"` (randomized CholeskyQR, as in Dion): 37.4 / 11.4 / 21.6 / 2.50 ms for the four shapes above. Most of this is the batched Householder QR of the sketch (34.9 ms for 40 x 384 x 210). On a single 8192 x 512 matrix it takes 4.5 ms (scqr3: 3.3 ms). For batches, `robust=True` is both more accurate and about 10x faster. Details: `benchmarks/results/a100_rcqr_2026-11-07.txt`.
 - On the A100, `robust=True` costs about the same as the default, because its FP64 throughput is high.
 - Without compilation (eager), `"scqr3"` takes 3.77 / 4.33 / 6.58 / 1.85 ms for the four shapes. Compilation matters mainly for small problems.
 

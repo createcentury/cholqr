@@ -42,7 +42,8 @@ def timeit(f, Y, n=20):
     torch.cuda.synchronize(); t = time.perf_counter()
     for _ in range(n): f(Y)
     torch.cuda.synchronize(); return (time.perf_counter() - t) / n * 1e3
-F = {k: torch.compile(lambda Y, kw=kw: cholesky_qr(Y, **kw), fullgraph=True) for k, kw in M.items()}
+torch._dynamo.config.cache_size_limit = 128   # the four lambdas share one code object
+F = {k: torch.compile(lambda Y, kw=kw: cholesky_qr(Y, **kw), fullgraph=True, dynamic=False) for k, kw in M.items()}
 print("\n[speed ms, batched] shape | linalg.qr | " + " | ".join(F) + " | dion rcqr (loop)")
 for b, m, r in [(40, 768, 210), (10, 3072, 210), (16, 4096, 256), (4, 768, 64), (1, 3072, 210), (1, 8192, 512)]:
     Y = torch.randn(b, m, r, device=dev)
