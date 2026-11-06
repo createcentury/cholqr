@@ -1,0 +1,5 @@
+Tesla T4, torch 2.14.1+cu130 (Colab), mean of 20 calls after 3 warmups
+40x768x210:  torch.linalg.qr 51.66 ms | cholqr eager 11.26 | compiled 10.77 | robust 45.10 ms | speedup 4.8x | max||QtQ-I|| 3.5e-06
+10x3072x210: torch.linalg.qr 22.96 ms | cholqr eager  8.99 | compiled  9.70 | robust 40.44 ms | speedup 2.4x | max||QtQ-I|| 3.5e-06
+4x768x64:    torch.linalg.qr  1.55 ms | cholqr eager  2.61 | compiled  1.68 | robust  6.15 ms | speedup 0.9x | max||QtQ-I|| 1.5e-06
+16x4096x256: torch.linalg.qr 62.35 ms | cholqr eager 23.14 | compiled 25.48 | robust 104.20 ms | speedup 2.4x | max||QtQ-I|| 4.3e-06

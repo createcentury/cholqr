@@ -27,6 +27,19 @@ On an NVIDIA A100, for the sketches of randomized low-rank Muon on nanoGPT (two 
 - On the QR step alone, `cholqr` is 3–14x faster.
 - End to end (1490 steps, A100-80GB), replacing the QR removes about 100 ms per step. Randomized Muon then trains as fast as full Muon at unchanged perplexity.
 
+Library benchmark on an **NVIDIA Tesla T4** (torch 2.14.1, CUDA 13.0; mean of 20 calls; `benchmarks/bench_qr.py`):
+
+| batch x m x r | `torch.linalg.qr` | `cholqr` (compiled) | speedup | `robust=True` | max ‖QᵀQ − I‖_F |
+|---|---|---|---|---|---|
+| 40 x 768 x 210 | 51.7 ms | 10.8 ms | **4.8x** | 45.1 ms | 3.5e-6 |
+| 10 x 3072 x 210 | 23.0 ms | 9.7 ms | **2.4x** | 40.4 ms | 3.5e-6 |
+| 16 x 4096 x 256 | 62.4 ms | 25.5 ms | **2.4x** | 104.2 ms | 4.3e-6 |
+| 4 x 768 x 64 | 1.55 ms | 1.68 ms | 0.9x | 6.2 ms | 1.5e-6 |
+
+- The gain comes from batches of moderately wide sketches. For small problems (e.g. 4 x 768 x 64), Householder QR is already fast, so do not expect a speedup there.
+- `robust=True` is slow on the T4 because the T4 has low FP64 throughput. Use it only for ill-conditioned inputs, preferably on A100/H100-class GPUs.
+- The A100 numbers in the table above come from the randomized-Muon training code (same algorithm).
+
 Run `python benchmarks/bench_qr.py --compile` on your GPU to measure your own shapes.
 
 ## How
