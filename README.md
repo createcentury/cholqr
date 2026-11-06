@@ -81,7 +81,19 @@ These numbers were tested on 3072 x 210 inputs with geometric and power-law spec
   - Sketches computed in bf16 are typically well inside the default range, because bf16 rounding caps their effective condition number.
 - Exactly rank-deficient or zero inputs return finite outputs (not an orthonormal basis of a larger space).
 - **TF32:** if TF32 matmul is enabled (`torch.set_float32_matmul_precision("high")`, common in training scripts on Ampere and newer GPUs), the Gram products lose precision.
-  - In CPU emulation: orthogonality degrades from ~1e-5 to ~2e-4 for `"scqr3"`/`robust`, and `"cqr2"` already fails near cond(Y) ~ 1e3.
+  - Measured on an A100-SXM4-80GB (torch 2.7.1, 3072 x 210, ‖QᵀQ − I‖_F):
+
+    | cond(Y) | 1e1 | 1e3 | 4e3 | 1e4 | 1e6 | 1e8 |
+    |---|---|---|---|---|---|---|
+    | `scqr3`, highest | 1.5e-6 | 1.6e-6 | 1.6e-6 | 1.5e-6 | 2.4e-6 | breaks down |
+    | `scqr3`, TF32 | 1.4e-4 | 1.9e-4 | 1.9e-4 | 2.1e-4 | 2.4e-4 | 2.8e-4 |
+    | `robust`, highest | 1.2e-6 | 1.1e-6 | 1.6e-6 | 1.5e-6 | 1.6e-6 | 1.5e-6 |
+    | `robust`, TF32 | 1.8e-4 | 1.8e-4 | 2.0e-4 | 1.8e-4 | 1.8e-4 | 1.8e-4 |
+    | `cqr2`, highest | 1.6e-6 | 2.4e-6 | 2.4e-6 | 2.9e-6 | breaks down | breaks down |
+    | `cqr2`, TF32 | 1.9e-4 | 2.0e-3 | 6.8e-3 | breaks down | breaks down | breaks down |
+
+    TF32 costs about two orders of magnitude in orthogonality for every method, and `"cqr2"` loses accuracy from cond(Y) ~ 1e3 on.
+    This agrees with our earlier CPU emulation.
   - `cholqr` warns in that case. Wrap the call with `torch.set_float32_matmul_precision("highest")` if you need full accuracy.
 - Real dtypes only; complex inputs raise `TypeError`. Autograd works (gradients agree with Householder QR to ~1e-7 in tests). Runs on CUDA, CPU and Apple MPS.
 - Status: **experimental (0.x)**. The API may change. Issues and benchmarks on other GPUs are welcome.

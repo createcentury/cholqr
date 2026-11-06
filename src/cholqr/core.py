@@ -45,7 +45,9 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         raise ValueError(f"method must be one of {_METHODS}, got {method!r}")
     if robust and method != "scqr3":
         raise ValueError("robust=True is only available for method='scqr3'")
-    if Y.is_cuda and torch.get_float32_matmul_precision() != "highest" and not torch.compiler.is_compiling():
+    # is_compiling() must be evaluated first: older Dynamo (e.g. torch 2.7) cannot trace
+    # get_float32_matmul_precision() (returns a str) and fails under fullgraph=True.
+    if not torch.compiler.is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() != "highest":
         warnings.warn("cholqr: TF32 matmul is enabled (float32_matmul_precision != 'highest'). Gram products are then "
                       "computed at ~1e-3 precision: orthogonality degrades to ~1e-4 (scqr3) and cqr2 becomes unreliable "
                       "already near cond(Y) ~ 1e3. Use torch.set_float32_matmul_precision('highest') around the call.",
