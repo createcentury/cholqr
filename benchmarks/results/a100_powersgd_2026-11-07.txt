@@ -36,3 +36,18 @@ rank 4:  final loss 2.387 | cond over 2106 calls: median 2.7e+00, 99% 1.5e+01, m
    worst cond 6.9e+01 (1,384,4): orth torch 1.6e-07 cqr2 6.8e-07 scqr3 5.3e-07
 rank 32: final loss 2.276 | cond over 2106 calls: median 2.9e+01, 99% 2.1e+02, max 1.9e+03
    worst cond 1.9e+03 (1,384,32): orth torch 8.9e-07 cqr2 7.6e-07 scqr3 6.5e-07
+
+Eager CholeskyQR2 drop-in (repro_powersgd_orth.py; FP32 compute, column scaling, cholesky_ex + per-matrix fallback, one host sync):
+b x n x r | dtype | current _orthogonalize (ms) | CholeskyQR2 (ms) | speedup | orth current | orth CQR2
+1x768x4 | float32  |   0.180 |   0.852 |   0.2x | 3.5e-07 | 6.2e-07
+1x768x32 | float32  |   0.294 |   0.855 |   0.3x | 8.3e-07 | 5.0e-07
+1x3072x64 | float32  |   0.871 |   0.893 |   1.0x | 1.3e-06 | 9.7e-07
+12x768x16 | float32  |   2.063 |   0.812 |   2.5x | 7.4e-07 | 1.5e-06
+12x3072x32 | float32  |   4.300 |   1.616 |   2.7x | 9.8e-07 | 4.8e-06
+12x3072x64 | float32  |   8.207 |   1.877 |   4.4x | 1.4e-06 | 6.8e-06
+1x768x4 | bfloat16 |   0.452 |   0.876 |   0.5x | 4.8e-03 | 4.1e-04
+1x768x32 | bfloat16 |   3.266 |   0.886 |   3.7x | 1.4e-02 | 2.9e-03
+1x3072x64 | bfloat16 |   6.518 |   0.866 |   7.5x | 2.5e-02 | 2.7e-03
+12x768x16 | bfloat16 |   1.707 |   0.873 |   2.0x | 1.3e-02 | 1.6e-03
+12x3072x32 | bfloat16 |   3.439 |   1.649 |   2.1x | 1.8e-02 | 1.6e-03
+12x3072x64 | bfloat16 |   6.701 |   1.906 |   3.5x | 2.6e-02 | 2.9e-03
