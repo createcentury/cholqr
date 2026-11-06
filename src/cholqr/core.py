@@ -1,3 +1,4 @@
+import math
 import warnings
 from typing import Optional
 
@@ -5,11 +6,12 @@ import torch
 
 __all__ = ["cholesky_qr", "orthonormal_basis"]
 
-_METHODS = ("scqr3", "cqr2")
+_METHODS = ("scqr3", "cqr2", "rcqr")
 
 
 def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, return_r: bool = False,
-                out_dtype=None, shift: float = 1e-6, passes: Optional[int] = None):
+                out_dtype=None, shift: float = 1e-6, passes: Optional[int] = None, oversample: float = 1.25,
+                generator: Optional[torch.Generator] = None):
     """Thin QR of a (batch of) tall-skinny matrix Y of shape (..., m, r), r <= m, via Cholesky QR.
 
     Methods
@@ -21,6 +23,11 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     ``"cqr2"``: CholeskyQR2 (Yamamoto, Nakatsukasa, Yanagisawa, Fukaya, 2015). Two passes, about 1/3 cheaper. Use it
     **only for well-conditioned inputs**: in FP32 it breaks down beyond cond(Y) ~ u^{-1/2} ~ 4e3.
 
+    ``"rcqr"``: randomized (sketch-preconditioned) CholeskyQR, as in Balabanov (2022), Higgins et al. (2024) and the
+    Dion optimizer. A Gaussian sketch S (k x m, k = oversample * r rounded up to a multiple of 128, as in Dion) gives
+    R0 from a Householder QR of the small matrix S Y; Y R0^{-1} is then well conditioned and one CholeskyQR pass
+    finishes. One sketch is shared by all matrices of a batch.
+
     Implementation notes (all methods): every pass rescales the columns before the Gram product (scale invariant, no
     FP32 overflow). The r x r triangular inverse is applied as one batched GEMM. ``cholesky_ex`` with a per-matrix
     ``torch.where`` fallback skips a failed pass without host synchronization, so the function compiles into a single
@@ -28,12 +35,15 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
 
     Args:
         Y: real tensor of shape (..., m, r) with r <= m.
-        method: ``"scqr3"`` or ``"cqr2"``.
+        method: ``"scqr3"``, ``"cqr2"`` or ``"rcqr"``.
         robust: (scqr3 only) run the first pass in FP64.
         return_r: also return the upper-triangular factor R with Y = Q R.
         out_dtype: dtype of the results (default: dtype of Y).
         shift: relative shift of the first scqr3 pass (FP32 mode).
-        passes: override the number of passes (default 3 for scqr3, 2 for cqr2).
+        passes: override the number of passes (default 3 for scqr3, 2 for cqr2; for rcqr: CholeskyQR passes after the
+            sketch step, default 1).
+        oversample: (rcqr only) sketch size factor.
+        generator: (rcqr only) torch.Generator for the sketch (graph-breaks under torch.compile).
     Returns:
         Q of shape (..., m, r), or (Q, R) with R of shape (..., r, r) if ``return_r``.
     """
@@ -55,10 +65,23 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     m, r = Y.shape[-2], Y.shape[-1]
     if r > m:
         raise ValueError(f"cholesky_qr expects tall-skinny input (r <= m), got m={m}, r={r}")
-    n_pass = passes if passes is not None else (3 if method == "scqr3" else 2)
+    n_pass = passes if passes is not None else {"scqr3": 3, "cqr2": 2, "rcqr": 1}[method]
     u = torch.finfo(torch.float32).eps
     Q = Y.double() if robust else Y.float()
     R = None
+    if method == "rcqr":
+        k = min(m, max(r, math.ceil(oversample * r / 128) * 128))
+        d0 = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+        Q = Q / d0
+        S = torch.randn(k, m, device=Q.device, dtype=Q.dtype, generator=generator) / math.sqrt(k)
+        R0 = torch.linalg.qr(S @ Q, mode="r")[1]                            # (..., r, r)
+        dg = R0.diagonal(dim1=-2, dim2=-1)
+        tiny = 1e-30 + u * dg.abs().amax(dim=-1, keepdim=True)
+        dg_safe = torch.where(dg.abs() < tiny, torch.where(dg < 0, -tiny, tiny), dg)   # rank-deficient guard
+        R0 = R0 - torch.diag_embed(dg) + torch.diag_embed(dg_safe)
+        Q = torch.linalg.solve_triangular(R0, Q, upper=True, left=False)
+        if return_r:
+            R = R0 @ torch.diag_embed(d0.squeeze(-2))
     for i in range(n_pass):
         if robust and i == 1:
             Q = Q.float()

@@ -137,3 +137,42 @@ def test_invalid_method_and_robust_combo():
 def test_compiles_without_graph_breaks_v02(kw):
     explain = torch._dynamo.explain(cholesky_qr)(torch.randn(256, 32), **kw)
     assert explain.graph_break_count == 0
+
+
+# ---- rcqr (randomized Cholesky QR) ----
+@pytest.mark.parametrize("kind", ["geometric", "powerlaw"])
+@pytest.mark.parametrize("kappa", [1e1, 1e3, 1e5, 1e6])
+def test_rcqr_fp32(kind, kappa):
+    Y = make_spectrum(3072, 210, kappa, kind)
+    Q = cholesky_qr(Y, method="rcqr", generator=torch.Generator().manual_seed(1))
+    assert orth_err(Q) < 5e-5
+    assert subspace_err(Q, Y) < 1e-2 * max(1.0, kappa / 1e5)
+
+
+@pytest.mark.parametrize("kappa", [1e1, 1e5])
+def test_rcqr_return_r(kappa):
+    Y = make_spectrum(3072, 210, kappa, "powerlaw")
+    Q, R = cholesky_qr(Y, method="rcqr", return_r=True)
+    assert torch.allclose(R, R.triu())
+    rel = ((Q.double() @ R.double() - Y.double()).norm() / Y.double().norm()).item()
+    assert rel < 1e-5
+
+
+def test_rcqr_batched_and_degenerate():
+    Y = torch.randn(5, 600, 40)
+    assert orth_err(cholesky_qr(Y, method="rcqr")) < 5e-5
+    Z = torch.zeros(2, 300, 20)
+    assert torch.isfinite(cholesky_qr(Z, method="rcqr")).all()
+    small = torch.randn(100, 90)                       # k is capped at m
+    assert orth_err(cholesky_qr(small, method="rcqr")) < 5e-5
+
+
+def test_rcqr_compiles():
+    torch._dynamo.reset()
+    f = torch.compile(lambda Y: cholesky_qr(Y, method="rcqr"), fullgraph=True)
+    assert orth_err(f(torch.randn(3, 500, 30))) < 5e-5
+
+
+def test_rcqr_rejects_robust():
+    with pytest.raises(ValueError):
+        cholesky_qr(torch.randn(100, 10), method="rcqr", robust=True)
