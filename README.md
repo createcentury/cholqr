@@ -20,7 +20,7 @@ fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synch
 |---|---|---|---|
 | `"scqr3"` (default) | 3 | cond(Y) ≲ 1e6 | general use |
 | `"scqr3"`, `robust=True` | 3 (first in FP64) | cond(Y) up to ≥ 1e8 | ill-conditioned inputs, data-center GPUs |
-| `"cqr2"` | 2 | cond(Y) ≲ 4e3 (= u^{-1/2}; 1e4 measured on A100) | known well-conditioned inputs, e.g. sketches without power iteration |
+| `"cqr2"` | 2 | cond(Y) ≲ 4e3 guaranteed (= u^{-1/2}); with the chunked Gram of v0.4 it survives 1e4 and breaks between 1e4 and 3e4 (CPU) | known well-conditioned inputs, e.g. sketches without power iteration |
 | `"auto"` | — | any | **recommended when shapes vary**: Householder (`torch.linalg.qr`) for a single matrix with r ≤ 64, otherwise `"scqr3"` |
 | `"rcqr"` | sketch + 1 | cond(Y) up to ≥ 1e8 (orth ≈ 7e-6) | single large matrices; **slow when batched** (its preconditioner is a batched Householder QR) |
 

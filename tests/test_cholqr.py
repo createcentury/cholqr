@@ -103,7 +103,8 @@ def test_cqr2_well_conditioned(kind, kappa):
 
 
 def test_cqr2_breaks_down_beyond_range():
-    Y = make_spectrum(3072, 210, 1e4, "geometric")
+    # With the chunked Gram (v0.4) fp32 cqr2 survives cond ~ 1e4 on CPU and breaks between 1e4 and 3e4.
+    Y = make_spectrum(3072, 210, 1e5, "geometric")
     assert orth_err(cholesky_qr(Y, method="cqr2")) > 1.0
 
 

@@ -10,6 +10,28 @@ _METHODS = ("scqr3", "cqr2", "rcqr", "auto")
 _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A100 measurements, see README)
 
 
+_GRAM_CHUNK = 256
+
+
+def _gram(Q: torch.Tensor) -> torch.Tensor:
+    """Q^T Q for tall Q (..., m, r) with a manual split-K over m.
+
+    cuBLAS often runs a small-output (r x r), long-reduction (m) GEMM without split-K, nearly serially
+    (e.g. 1.13 ms for 4 x 6144 x 8 fp32 on an A100). Chunking m into blocks of _GRAM_CHUNK rows gives a batched
+    GEMM plus a sum (about 14x faster there). Mathematically identical; only the summation order differs.
+    """
+    m = Q.shape[-2]
+    if m < 2 * _GRAM_CHUNK:
+        return Q.mT @ Q
+    q = m // _GRAM_CHUNK
+    head = Q[..., : q * _GRAM_CHUNK, :].reshape(*Q.shape[:-2], q, _GRAM_CHUNK, Q.shape[-1])
+    G = (head.mT @ head).sum(-3)
+    if m % _GRAM_CHUNK:
+        tail = Q[..., q * _GRAM_CHUNK:, :]
+        G = G + tail.mT @ tail
+    return G
+
+
 def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, return_r: bool = False,
                 out_dtype=None, shift: float = 1e-6, passes: Optional[int] = None, oversample: float = 1.25,
                 generator: Optional[torch.Generator] = None):
@@ -100,7 +122,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             eye = eye.float()
         d = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)                 # (..., 1, r) column norms
         Q = Q / d
-        G = Q.mT @ Q
+        G = _gram(Q)
         # columns have unit norm, so tr(G) = r (zero columns only make it smaller, i.e. the shift is conservative)
         if method == "scqr3" and i == 0:
             s = (1e-14 if robust else shift) * r
