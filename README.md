@@ -73,6 +73,9 @@ Run `python benchmarks/bench_qr.py --compile` on your GPU to measure your own sh
 
 Shifted CholeskyQR3 (Fukaya et al., 2020) with three implementation choices:
 
+1. **Split-K Gram products (v0.4).** For m >= 2048, the Gram product Q^T Q is computed as a batched GEMM over
+   256-row chunks plus a sum. cuBLAS otherwise runs this small-output, long-reduction GEMM almost serially (A100:
+   1.13 ms -> 0.08 ms for 4 x 6144 x 8 fp32). Summing shorter partial products also improves fp32 accuracy.
 1. **Column scaling before every Gram product.** The shift is scale invariant, and unnormalized inputs do not overflow FP32.
 2. **Explicit r x r triangular inverse applied as one batched GEMM.** This replaces a slow triangular solve over m rows.
 3. **`cholesky_ex` with a per-matrix `torch.where` fallback.** There is no host synchronization, and the routine compiles with zero graph breaks.

@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased (0.4.0)
-- **Faster Gram products.** Q^T Q is now computed with a manual split-K: the m rows are chunked into blocks of 256, then
-  a batched GEMM, then a sum.
+## 0.4.0 (2026-11-08)
+- **Faster Gram products.** For m >= 2048 rows, Q^T Q is now computed with a manual split-K: the m rows are chunked
+  into blocks of 256, then a batched GEMM, then a sum. Smaller m keeps the plain GEMM, where chunking only adds
+  launches.
   - cuBLAS runs this small-output, long-reduction GEMM nearly serially. On an A100, 4 x 6144 x 8 fp32 took 1.13 ms;
     chunked it takes 0.08 ms.
   - The result is mathematically identical. The shorter summations also make fp32 Gram products more accurate:
     `cqr2` now survives cond(Y) ~ 1e4 on CPU (previously it broke down at ~4e3).
+  - The speed tables in the README were measured with 0.3.0 and are not refreshed. The change affects the Gram passes
+    only, which were the slowest part for tall inputs.
+- Tests: the DDP-hook test is skipped when numpy is missing (PyTorch's PowerSGDState imports it). New `test` extra.
 
 ## 0.3.0 (2026-11-07)
 - `method="auto"`: Householder `torch.linalg.qr` for a single matrix with r <= 64 (where CholeskyQR's launch overhead dominates), `"scqr3"` otherwise. Accepts `robust`.
