@@ -36,6 +36,7 @@ def test_fallback_on_ill_conditioned_batch():
 
 
 def test_patch_unpatch_and_ddp_hook_equivalence():
+    pytest.importorskip("numpy")    # torch's PowerSGDState imports numpy
     os.environ.setdefault("MASTER_ADDR", "127.0.0.1"); os.environ.setdefault("MASTER_PORT", "29561")
     if not dist.is_initialized():
         dist.init_process_group("gloo", rank=0, world_size=1)
