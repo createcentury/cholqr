@@ -11,6 +11,7 @@ _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A1
 
 
 _GRAM_CHUNK = 256
+_GRAM_SPLITK_MIN_ROWS = 4096   # below this the plain GEMM is used (provisional A100 threshold; chunking adds launches)
 
 
 def _gram(Q: torch.Tensor) -> torch.Tensor:
@@ -21,7 +22,7 @@ def _gram(Q: torch.Tensor) -> torch.Tensor:
     GEMM plus a sum (about 14x faster there). Mathematically identical; only the summation order differs.
     """
     m = Q.shape[-2]
-    if m < 2 * _GRAM_CHUNK:
+    if m < max(2 * _GRAM_CHUNK, _GRAM_SPLITK_MIN_ROWS):
         return Q.mT @ Q
     q = m // _GRAM_CHUNK
     head = Q[..., : q * _GRAM_CHUNK, :].reshape(*Q.shape[:-2], q, _GRAM_CHUNK, Q.shape[-1])
