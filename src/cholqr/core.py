@@ -11,7 +11,7 @@ _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A1
 
 
 _GRAM_CHUNK = 256
-_GRAM_SPLITK_MIN_ROWS = 4096   # below this the plain GEMM is used (provisional A100 threshold; chunking adds launches)
+_GRAM_SPLITK_MIN_ROWS = 2048   # below this the plain GEMM is used (A100 A/B, see lowrank-muon dispatch results)
 
 
 def _gram(Q: torch.Tensor) -> torch.Tensor:
