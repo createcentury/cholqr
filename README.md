@@ -10,6 +10,7 @@ from cholqr import cholesky_qr
 
 Y = torch.randn(40, 768, 210, device="cuda")       # batch of tall-skinny matrices
 Q = cholesky_qr(Y)                                 # shifted CholeskyQR3 (default, safe)
+Q = cholesky_qr(Y, method="auto")                  # when shapes vary: single small matrices go to Householder
 Q = cholesky_qr(Y, method="cqr2")                  # CholeskyQR2: ~1/3 cheaper, only for cond(Y) <~ 1e3
 Q = cholesky_qr(Y, robust=True)                    # FP64 first pass: cond(Y) up to >= 1e8
 Q, R = cholesky_qr(Y, return_r=True)               # also R (upper triangular), Y = Q R
@@ -79,6 +80,7 @@ if step % 100 == 0:                              # occasionally, outside the com
 | `torch.compile`, `torch.func`, `torch.jit.trace` | default call inside; `cholqr.orthogonality_bound(Q)` outside | the data-dependent check and fallback cannot run in a graph |
 | float16 / bfloat16 / float8 output | `out_dtype=torch.float32`, or give `tol` | |
 | no host synchronization at all | `on_breakdown="ignore"` | no check, no repair |
+| multi-process training (DDP, FSDP, ZeRO) | not `on_breakdown="raise"`; make any fallback decision collective | see [Distributed training](https://github.com/createcentury/cholqr/blob/main/docs/powersgd.md#distributed-training-keep-decisions-identical-on-every-rank) |
 
 ## Documentation
 
@@ -90,6 +92,7 @@ if step % 100 == 0:                              # occasionally, outside the com
 | [Devices: proved vs measured](https://github.com/createcentury/cholqr/blob/main/docs/devices.md) | device sweep (Apple, NVIDIA), `python -m cholqr` to check your device |
 | [Compatibility](https://github.com/createcentury/cholqr/blob/main/docs/compatibility.md) | Python / PyTorch versions, execution modes, `method="auto"` |
 | [PowerSGD drop-in](https://github.com/createcentury/cholqr/blob/main/docs/powersgd.md) | `cholqr.contrib.powersgd` for DDP gradient compression |
+| [Distributed training (DDP / FSDP / ZeRO)](https://github.com/createcentury/cholqr/blob/main/docs/powersgd.md#distributed-training-keep-decisions-identical-on-every-rank) | keep fallback decisions identical on every rank: no `on_breakdown="raise"`, all-reduce the check with `MAX` |
 
 ## Formally verified core
 
