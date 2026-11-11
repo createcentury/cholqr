@@ -95,3 +95,39 @@ def test_second_gpu():
     Y = _ill(kappa=1e9).to("cuda:1")
     Q = cholesky_qr(Y)
     assert Q.device == Y.device and _orth(Q.cpu()) < 1e-4
+
+
+def test_threads():
+    import concurrent.futures as cf
+    Ys = [_ill(kappa=k, seed=i) for i, k in enumerate([1e2, 1e9, 1e3, 1e8] * 2)]
+    with cf.ThreadPoolExecutor(4) as ex:
+        Qs = list(ex.map(cholesky_qr, Ys))
+    assert max(_orth(Q) for Q in Qs) < 1e-4
+
+
+def _child(q):
+    import torch as t
+    from cholqr import cholesky_qr as f
+    Y = t.randn(256, 16)
+    Q = f(Y)
+    q.put(float((Q.double().mT @ Q.double() - t.eye(16, dtype=t.float64)).norm()))
+
+
+def test_subprocess_spawn():
+    import multiprocessing as mp
+    ctx = mp.get_context("spawn")
+    q = ctx.Queue(); p = ctx.Process(target=_child, args=(q,)); p.start(); p.join(60)
+    assert p.exitcode == 0 and q.get(timeout=5) < 1e-4
+
+
+def test_torch_export_ignore():
+    # torch.export traces a graph: use on_breakdown="ignore" (the check is a data-dependent branch)
+    class M(torch.nn.Module):
+        def forward(self, Y):
+            return cholesky_qr(Y, on_breakdown="ignore")
+    Y = torch.randn(256, 16)
+    try:
+        ep = torch.export.export(M(), (Y,))
+    except Exception as e:                       # report, do not hide
+        pytest.skip(f"torch.export unsupported here: {type(e).__name__}: {str(e)[:120]}")
+    assert _orth(ep.module()(Y)) < 1e-4

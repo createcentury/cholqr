@@ -220,6 +220,22 @@ run with orthogonality > 1e-4 (false alarms in parentheses).
 The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
 `python -m cholqr` reports the same Gram-error class for a random well-conditioned matrix, so its numbers are smaller.
 
+## Compatibility
+
+| | tested | notes |
+|---|---|---|
+| Python | 3.9-3.15 | CI |
+| PyTorch | 2.1 to latest; nightly in CI (allowed to fail) | on torch < 2.3, compiling `method="rcqr"` hits an Inductor bug |
+| OS / CPU | Linux x86-64 and ARM64, macOS (Apple silicon), Windows | CI |
+| NumPy | 1.x and 2.x | only the PowerSGD DDP test uses it |
+| NVIDIA GPUs | Ampere, Ada, Hopper, Blackwell (A40, A100, L4, RTX 4090/5090, RTX PRO 6000, H100) | device table above |
+| Apple GPUs | MPS | no FP64: the fallback uses Householder directly |
+| Input dtypes | float64, float32, bfloat16, float16, float8_e4m3fn | computation is FP32 (FP64 first pass with `robust=True`) |
+| Matmul precision | `highest`; `high` (TF32: compensated, see CHANGELOG) | `medium` may use bfloat16 products on some backends: not compensated |
+| Execution modes | eager, `torch.compile` (inductor), `torch.func.vmap`, `torch.export` (with `on_breakdown="ignore"`), autograd incl. double backward, `inference_mode`, deterministic algorithms (CPU), threads, spawned processes | the breakdown check is skipped under `torch.compile`, `vmap` and tracing |
+| Not yet verified | Turing/Volta GPUs (T4, V100), AMD ROCm, Intel XPU, TPU (PyTorch/XLA), FSDP/DTensor inputs, deterministic mode / CUDA graphs / second GPU on CUDA (tests exist, run only on GPU machines) | reports welcome |
+| Not supported | complex dtypes (raise `TypeError`), TorchScript | |
+
 ## `method="auto"`
 
 CholeskyQR costs ~45 small kernel launches, so a single small matrix takes about 1 ms eager and 0.3 ms or more compiled.
