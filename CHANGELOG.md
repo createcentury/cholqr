@@ -30,7 +30,7 @@
   reports success (observed once on an RTX 4090 with torch 2.8).
 - **Fix:** the fallback merge works for every dtype (it failed for float8 inputs).
 - **Compatibility:** torch 2.1-2.3 work again (`torch.compiler.is_compiling` fallback; `dtype.is_complex` under Dynamo).
-  0.4.0 declared `torch>=2.1` but failed on torch < 2.3. On torch < 2.3, compiling `method="rcqr"` hits an Inductor bug.
+  0.4.0 declared `torch>=2.1` but failed on torch < 2.3. On torch < 2.4, compiling `method="rcqr"` fails (2.1) or hangs (2.3) in Inductor.
 - `contrib.powersgd` passes `on_breakdown="ignore"` because it has its own orthogonality check.
 - `cholqr.diagnose()` / `python -m cholqr`: measures in a few seconds the Gram error class (FP32 vs TF32), the
   breakdown points, the default's orthogonality, robust availability and timing on the current device.

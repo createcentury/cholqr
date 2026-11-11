@@ -228,7 +228,7 @@ def test_rcqr_batched_and_degenerate():
 _TORCH = tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
 
 
-@pytest.mark.skipif(_TORCH < (2, 3), reason="torch < 2.3: Inductor fails to compile the rcqr sketch (torch bug)")
+@pytest.mark.skipif(_TORCH < (2, 4), reason="torch < 2.4: Inductor fails (2.1) or hangs (2.3) compiling the rcqr sketch")
 def test_rcqr_compiles():
     torch._dynamo.reset()
     f = torch.compile(lambda Y: cholesky_qr(Y, method="rcqr"), fullgraph=True)

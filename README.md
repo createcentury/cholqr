@@ -225,7 +225,7 @@ The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (sp
 | | tested | notes |
 |---|---|---|
 | Python | 3.9-3.15 | CI |
-| PyTorch | 2.1 to latest; nightly in CI (allowed to fail) | on torch < 2.3, compiling `method="rcqr"` hits an Inductor bug |
+| PyTorch | 2.1 to latest; nightly in CI (allowed to fail) | on torch < 2.4, compiling `method="rcqr"` fails or hangs in Inductor |
 | OS / CPU | Linux x86-64 and ARM64, macOS (Apple silicon), Windows | CI |
 | NumPy | 1.x and 2.x | only the PowerSGD DDP test uses it |
 | NVIDIA GPUs | Ampere, Ada, Hopper, Blackwell (A40, A100, L4, RTX 4090/5090, RTX PRO 6000, H100) | device table above |
