@@ -277,8 +277,8 @@ run with orthogonality > 1e-4 (false alarms in parentheses).
 The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
 `python -m cholqr` reports the same Gram-error class for a random well-conditioned matrix, so its numbers are smaller.
 T4 (Turing) has no TF32, so `"high"` gives the same results as `"highest"` there (and no compensation is applied).
-Not measured yet: NVIDIA A100 (run incomplete) and Google TPUs (torch_xla; untested,
-not a target yet). Results from other hardware are welcome (`benchmarks/device_sweep.py`).
+Not measured yet: NVIDIA A100 (run incomplete). Google TPU v5e (torch_xla 2.8): a sanity check runs with 0
+mismatches, but the full sweep has not run (the benchmark assumed a scalar `info` from `cholesky_ex`); not a target yet. Results from other hardware are welcome (`benchmarks/device_sweep.py`).
 
 ## Compatibility
 
@@ -294,7 +294,7 @@ not a target yet). Results from other hardware are welcome (`benchmarks/device_s
 | Matmul precision | `highest` (full accuracy); `high` (TF32: partly compensated, see Accuracy) | `medium` may use bfloat16 products on some backends: not compensated |
 | Execution modes | eager, `torch.compile` (inductor), `torch.func.vmap`, `torch.export` (with `on_breakdown="ignore"`), autograd incl. double backward, `inference_mode`, deterministic algorithms (CPU), threads, spawned processes | the breakdown check is skipped under `torch.compile`, `vmap` and tracing; `verify=True` raises there |
 | CUDA execution modes | deterministic mode, CUDA graphs, reduce-overhead compile, second GPU (2x RTX 4090, torch 2.8: full test suite 124 passed) | tests |
-| Not yet verified | Volta GPUs (V100), A100, AMD ROCm, Intel XPU, TPU (PyTorch/XLA), FSDP/DTensor inputs | reports welcome |
+| Not yet verified | Volta GPUs (V100), A100, AMD ROCm, Intel XPU, TPU (PyTorch/XLA: sanity only), FSDP/DTensor inputs | reports welcome |
 | Not supported | complex dtypes (raise `TypeError`), TorchScript | |
 
 ## `method="auto"`
