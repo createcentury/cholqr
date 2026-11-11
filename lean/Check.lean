@@ -1,0 +1,19 @@
+import CholQR
+-- Axiom check (not part of `lake build`): `lake env lean Check.lean`
+-- Expected for every theorem: [propext, Classical.choice, Quot.sound]
+open CholQR.ShiftedPass CholQR.TheoremD
+#print axioms gram_Q1
+#print axioms T0_resolvent_eig
+#print axioms T0_eigvec
+#print axioms T0_eigvec_ne_zero
+#print axioms T0_similar
+#print axioms lemmaI_quadratic
+#print axioms lemmaI_posDef
+#print axioms D_a_identity
+#print axioms D_a_quad
+#print axioms D_a_bound
+#print axioms D_b_LLt
+#print axioms D_b_inv
+#print axioms D_b_bound
+#print axioms cauchy_schwarz_dot
+#print axioms D_c_bound
