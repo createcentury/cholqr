@@ -16,7 +16,7 @@ Usage:  python benchmarks/device_sweep.py --device cuda --precision highest --ou
 import argparse, json, math, platform, sys, time, warnings, zlib
 import torch
 import cholqr
-from cholqr.core import _gram, _prescale
+from cholqr.core import _gram, _prescale, _mm, _tf32_active
 
 EPS = torch.finfo(torch.float32).eps
 SPECTRA = ("geometric", "powerlaw", "spike", "cluster", "linear", "staircase")
@@ -87,7 +87,7 @@ def mirror(Y, method, log=True, robust=False):
         nanL = bool((~torch.isfinite(L.diagonal())).any())           # backend returned non-finite factor
         info = torch.where(torch.isfinite(L.diagonal()).all(), info, info.clamp_min(1) if int(info) == 0 else info)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
-        Qn = torch.where((info == 0)[..., None, None], Q @ L_inv.mT, Q)
+        Qn = torch.where((info == 0)[..., None, None], _mm(Q, L_inv.mT, _tf32_active(Q)), Q)
         if log:
             X = Q.cpu().double(); Gc = G.cpu().double(); Lc = L.cpu().double()
             A64 = torch.tril(A.cpu().double()); A64 = A64 + torch.tril(A64, -1).mT
