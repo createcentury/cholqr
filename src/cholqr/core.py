@@ -29,6 +29,33 @@ _GRAM_CHUNK = 256
 _GRAM_SPLITK_MIN_ROWS = 2048   # below this the plain GEMM is used (A100 A/B measurements)
 
 
+def _tf32_active(Q: torch.Tensor) -> bool:
+    """True if a float32 CUDA matmul on Q would run in TF32 (torch.backends.cuda.matmul.allow_tf32)."""
+    if not (Q.is_cuda and Q.dtype == torch.float32):
+        return False
+    try:
+        return bool(torch.backends.cuda.matmul.allow_tf32)
+    except Exception:                                     # attribute removed in some future torch: assume no TF32
+        return False
+
+
+def _tf32_split(A: torch.Tensor):
+    """A = hi + lo with hi exactly representable in TF32 (10-bit mantissa, round to nearest) and lo = A - hi exact."""
+    b = A.contiguous().view(torch.int32)
+    hi = ((b + 0x1000) & ~0x1FFF).view(torch.float32)
+    return hi, A - hi
+
+
+def _mm(A: torch.Tensor, B: torch.Tensor, tf32: bool) -> torch.Tensor:
+    """A @ B; with TF32 active, the 3xTF32 scheme hi@hi + (hi@lo + lo@hi) restores ~FP32 accuracy (lo@lo, ~2^-22
+    relative, is dropped). Three TF32 GEMMs are still faster than one FP32 GEMM on tensor-core GPUs."""
+    if not tf32:
+        return A @ B
+    Ah, Al = _tf32_split(A)
+    Bh, Bl = _tf32_split(B)
+    return Ah @ Bh + (Ah @ Bl + Al @ Bh)
+
+
 def _gram(Q: torch.Tensor) -> torch.Tensor:
     """Q^T Q for tall Q (..., m, r) with a manual split-K over m.
 
@@ -37,14 +64,15 @@ def _gram(Q: torch.Tensor) -> torch.Tensor:
     GEMM plus a sum (about 14x faster there). Mathematically identical; only the summation order differs.
     """
     m = Q.shape[-2]
+    tf32 = _tf32_active(Q)
     if m < max(2 * _GRAM_CHUNK, _GRAM_SPLITK_MIN_ROWS):
-        return Q.mT @ Q
+        return _mm(Q.mT, Q, tf32)
     q = m // _GRAM_CHUNK
     head = Q[..., : q * _GRAM_CHUNK, :].reshape(*Q.shape[:-2], q, _GRAM_CHUNK, Q.shape[-1])
-    G = (head.mT @ head).sum(-3)
+    G = _mm(head.mT, head, tf32).sum(-3)
     if m % _GRAM_CHUNK:
         tail = Q[..., q * _GRAM_CHUNK:, :]
-        G = G + tail.mT @ tail
+        G = G + _mm(tail.mT, tail, tf32)
     return G
 
 
@@ -116,10 +144,12 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         raise ValueError(f"on_breakdown must be one of {_ON_BREAKDOWN}, got {on_breakdown!r}")
     # is_compiling() must be evaluated first: older Dynamo (e.g. torch 2.7) cannot trace
     # get_float32_matmul_precision() (returns a str) and fails under fullgraph=True.
-    if not _is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() != "highest":
-        warnings.warn("cholqr: TF32 matmul is enabled (float32_matmul_precision != 'highest'). Gram products are then "
-                      "computed at ~1e-3 precision: orthogonality degrades to ~1e-4 (scqr3) and cqr2 becomes unreliable "
-                      "already near cond(Y) ~ 1e3. Use torch.set_float32_matmul_precision('highest') around the call.",
+    # TF32 ("high") is compensated inside cholqr by 3xTF32 products (see _mm). "medium" (bfloat16 internal precision)
+    # is not compensated and is warned about.
+    if not _is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() == "medium":
+        warnings.warn("cholqr: float32_matmul_precision is 'medium' (bfloat16-based matmul). Gram products then lose "
+                      "most of their precision and orthogonality degrades; cholqr compensates TF32 ('high') but not "
+                      "'medium'. Use torch.set_float32_matmul_precision('highest') or 'high' around the call.",
                       RuntimeWarning, stacklevel=2)
     m, r = Y.shape[-2], Y.shape[-1]
     if r > m:
@@ -227,7 +257,7 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
         bad = fail if bad is None else (bad | fail)
         if i == n_pass - 1:
             bad = bad | (L.diagonal(dim1=-2, dim2=-1).amin(dim=-1) < _BREAKDOWN_LMIN)
-        Q = torch.where(ok, Q @ L_inv.mT, Q)
+        Q = torch.where(ok, _mm(Q, L_inv.mT, _tf32_active(Q)), Q)
         if return_r:
             # Q_before = Q_scaled * d  and  Q_scaled = Q_after @ L^T (if the pass succeeded)
             D = torch.diag_embed(d.squeeze(-2))

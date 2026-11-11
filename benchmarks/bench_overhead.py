@@ -25,10 +25,11 @@ def timeit(fn, dev, reps=50, warm=10):
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--device", default="cuda"); ap.add_argument("--out", required=True)
+    ap.add_argument("--precision", default="highest", choices=["highest", "high", "medium"])
     a = ap.parse_args(); dev = torch.device(a.device)
-    torch.set_float32_matmul_precision("highest")
+    torch.set_float32_matmul_precision(a.precision)
     comp = torch.compile(lambda Y: cholqr.cholesky_qr(Y, on_breakdown="ignore"), fullgraph=True)
-    res = dict(device=str(dev), torch=torch.__version__, cholqr=cholqr.__version__,
+    res = dict(precision=a.precision, device=str(dev), torch=torch.__version__, cholqr=cholqr.__version__,
                gpu=torch.cuda.get_device_name(dev) if dev.type == "cuda" else None, rows=[])
     for b, m, r in SHAPES:
         Y = torch.randn(b, m, r, device=dev) if b > 1 else torch.randn(m, r, device=dev)
