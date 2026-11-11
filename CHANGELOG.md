@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.5.0 (unreleased)
-- **Breakdown detection and fallback (new default).** Beyond its range (FP32 `scqr3`: cond(Y) about 1e7; `cqr2`: about
+- **Breakdown detection and fallback (new default).** Beyond its range (FP32 `scqr3`: cond(Y) about 1e7, between ~3e5 and ~3e7 depending on spectrum and platform; `cqr2`: about
   3e4), CholeskyQR used to return a non-orthonormal Q without any error. A matrix is now flagged when a pass's
   `cholesky_ex` fails, when its Cholesky factor has a non-finite diagonal, or when the last pass's Cholesky factor has a
   diagonal entry below 0.195. The last test catches gradual loss of orthogonality without a failed factorization, which

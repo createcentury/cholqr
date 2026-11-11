@@ -98,9 +98,14 @@ Shifted CholeskyQR3 (Fukaya et al., 2020) with four implementation choices:
 | input condition number | FP32 `scqr3` without check (`on_breakdown="ignore"`, = 0.4) | default (0.5, eager) | `robust=True` (FP64 first pass) |
 |---|---|---|---|
 | up to 1e6 | ‖QᵀQ − I‖_F ≈ 1e-5 | identical (no fallback triggered) | ‖QᵀQ − I‖_F ≈ 1e-5 |
-| 5e6 – 1e8 | **breaks down** (‖QᵀQ − I‖_F ≈ 20–90) | ‖QᵀQ − I‖_F ≈ 1e-5 (repaired) | ‖QᵀQ − I‖_F ≈ 1e-5, subspace error ≈ 2e-6 |
+| 5e6 – 1e8 | **can break down** (‖QᵀQ − I‖_F ≈ 20–90 when it does) | ‖QᵀQ − I‖_F ≈ 1e-5 (repaired) | ‖QᵀQ − I‖_F ≈ 1e-5, subspace error ≈ 2e-6 |
 
-These numbers were tested on 3072 x 210 inputs with geometric and power-law spectra (`tests/`).
+These numbers were tested on 3072 x 210 inputs with geometric and power-law spectra (`tests/`). The onset of the
+breakdown is not a fixed number: in the device sweep (single draws, `scqr3`, FP32, `on_breakdown="ignore"`) the first
+broken cond(Y) ranged from about 3e5 (clustered or staircase spectra) to about 3e7 (geometric and power-law at 64
+columns), and spike spectra often survived to 1e9 or beyond. The same input can break on one platform and not on
+another: 3072 x 210, geometric, cond 1e7 breaks on an Apple M4 CPU but not on an x86 CPU (AMD Ryzen 9 9950X); at
+1e8 it breaks on both. The check below does not depend on where the cliff is.
 
 Where the cliff is (CPU, FP32 input, 276 columns, geometric spectrum, one draw per point; `on_breakdown="ignore"`):
 for 1024 rows it lies between cond(Y) 1e6 and 2e6. For 4096 rows it sits at about 3e6: there, 2 of 4 random draws
