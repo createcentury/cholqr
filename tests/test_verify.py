@@ -354,6 +354,7 @@ def test_rocm_and_mps_checked_on_cpu():
     assert core._check_device(torch.zeros(2, 2)).type == "cpu"
 
 
+@pytest.mark.skipif(not hasattr(torch.jit, "trace"), reason="torch.jit.trace removed in this torch")
 def test_verify_under_jit_trace_raises():
     with pytest.raises(RuntimeError, match="jit.trace"):
         torch.jit.trace(lambda y: cholesky_qr(y, verify=True), torch.randn(64, 4))

@@ -1,5 +1,6 @@
 import math
 import shutil
+import sys
 import pytest
 import torch
 from cholqr import cholesky_qr
@@ -229,7 +230,8 @@ def test_rcqr_batched_and_degenerate():
 
 
 _TORCH = tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
-_HAS_CXX = any(shutil.which(c) for c in ("g++", "clang++", "c++", "cl"))
+# Inductor uses MSVC (cl) on Windows and g++/clang++ elsewhere
+_HAS_CXX = bool(shutil.which("cl")) if sys.platform == "win32" else any(shutil.which(c) for c in ("g++", "clang++", "c++"))
 
 
 @pytest.mark.skipif(not _HAS_CXX, reason="Inductor needs a C++ compiler on CPU (none on PATH)")

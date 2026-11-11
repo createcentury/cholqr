@@ -9,6 +9,13 @@ import torch
 
 __all__ = ["cholesky_qr", "orthonormal_basis", "orthogonality_bound"]
 
+
+def _jit_tracing():
+    """True under torch.jit.trace; False if the installed torch has no TorchScript tracer."""
+    f = getattr(getattr(torch, "jit", None), "is_tracing", None)
+    return bool(f()) if callable(f) else False
+
+
 def _is_compiling() -> bool:
     """torch.compiler.is_compiling (torch >= 2.3); torch._dynamo.is_compiling on older versions."""
     f = getattr(torch.compiler, "is_compiling", None)
@@ -437,7 +444,7 @@ def orthogonality_bound(Q: torch.Tensor) -> torch.Tensor:
     alpha = 1 + (r^2 + 4) u + O(u^2), beta = m u (1 + O((m + r) u)), u = 2^-53; i.e. the computed error plus about
     m u tr(G) ~ 1.3e-10 for m = 4096, r = 276 with unit columns.
     """
-    if _is_compiling() or torch.jit.is_tracing():
+    if _is_compiling() or _jit_tracing():
         raise RuntimeError("cholqr.orthogonality_bound cannot run while compiling or tracing (the compiler may change "
                            "the arithmetic the bound relies on); call it outside the compiled/traced region")
     if Q.dim() < 2:
@@ -489,7 +496,7 @@ def _check_verify_call(Y, on_breakdown, tol):
     if on_breakdown == "ignore":
         raise ValueError("verify=True needs on_breakdown in ('fallback', 'warn', 'raise'); for a bound without any "
                          "action call cholqr.orthogonality_bound(Q)")
-    if torch.jit.is_tracing():
+    if _jit_tracing():
         raise RuntimeError("cholqr: verify=True is not available under torch.jit.trace (the data-dependent fallback "
                            "cannot be traced). Trace with verify=False and check the result with "
                            "cholqr.orthogonality_bound(Q)")
