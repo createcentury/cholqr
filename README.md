@@ -66,6 +66,20 @@ if step % 100 == 0:                              # occasionally, outside the com
 
 **Example (randomized low-rank Muon on nanoGPT):** the measured cond(Y) is at most 70 without power iteration (h=0), so `"cqr2"` is safe there. With one power iteration (h=1) it reaches 4.5×10⁴, which needs `"scqr3"`.
 
+## Which settings to use
+
+| goal | call | what you get / cost |
+|---|---|---|
+| default, most uses | `cholesky_qr(Y)` | ~1e-5 orthogonality for cond(Y) ≤ 1e6 (geometric spectra, measured); breakdowns detected and repaired in eager mode |
+| speed, inputs known to be well conditioned (cond ≲ 1e3) | `method="cqr2"` | about 1/3 cheaper |
+| one small matrix (r ≤ 64) | `method="auto"` | dispatches to `torch.linalg.qr`, which is faster there |
+| ill-conditioned inputs | `robust=True` | FP64 first pass; not on Apple MPS |
+| a stated orthogonality guarantee | `verify=True` (optionally `tol=`) | Q returned only if an FP64 bound proves ‖QᵀQ − I‖_F ≤ tol; cost +12–29% on an A100, up to +216% on an RTX 4090 (FP64 at 1/64 speed) |
+| TF32 enabled globally | `torch.set_float32_matmul_precision("highest")` around the call, or `verify=True` | see the TF32 warning above |
+| `torch.compile`, `torch.func`, `torch.jit.trace` | default call inside; `cholqr.orthogonality_bound(Q)` outside | the data-dependent check and fallback cannot run in a graph |
+| float16 / bfloat16 / float8 output | `out_dtype=torch.float32`, or give `tol` | |
+| no host synchronization at all | `on_breakdown="ignore"` | no check, no repair |
+
 ## Documentation
 
 | page | contents |
