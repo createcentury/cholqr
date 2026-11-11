@@ -1,0 +1,19 @@
+cholqr 0.5.0, torch 2.15.0
+R1: PASS -- FP32 cholqr non-broken n=774: max resid 4.23e-06, median 1.72e-07
+R2: PASS -- median resid cond>=1e6 vs cond<=1e3 within 10x
+R3: PASS -- tf32e non-broken n=376: resid 6.71e-04..8.33e-03
+R4a: FAIL -- sin_fl <= 1e-7 kappa in 674/774 (need >= 98%)
+R4b: PASS -- sin_fl <= ||Y-QR||_2/sigma_min in 955/955
+R5: FAIL -- orth in [1e-3, 0.1]: sin_fl <= orth in 0/54 (need >= 90%)
+D1: PASS -- sv rel err <= bound in 144/144; align attains >= 0.9 bound in 72/72
+D2: PASS -- Pythagoras identity within 1e-6 in 144/144
+V1: PASS -- align 1e-4: max excess (lr_exact>=1e-3) 3.50e-03; max sv err 5.00e-05
+V2: PASS -- align 1e-2: excess >= 10% for some lr_exact <= 1e-3; <= 1% for all lr_exact >= 0.1
+D3: FAIL -- realistic non-broken: sv err <= max(orth, 1e-6) in 21/104
+S1: PASS -- orth(Q_J) <= 3 median_j orth(Q_j); violations: []
+S2: FAIL -- capture error at J <= max(2 exact, limit); violations: ['poly2/0/tf32e_scqr3_raw: 1.19e-02 vs exact 2.15e-06', 'poly2/0/tf32e_cqr2_raw: 1.00e+00 vs exact 2.15e-06', 'poly2/1/tf32e_scqr3_raw: 1.27e-02 vs exact 4.04e-06', 'poly2/1/tf32e_cqr2_raw: 1.00e+00 vs exact 4.04e-06', 'geo12/0/tf32e_scqr3_raw: 6.63e-01 vs exact 4.08e-13', 'geo12/0/tf32e_cqr2_raw: 1.00e+00 vs exact 4.08e-13', 'geo12/1/tf32e_scqr3_raw: 5.10e-01 vs exact 3.97e-13', 'geo12/1/tf32e_cqr2_raw: 9.99e-01 vs exact 3.97e-13']
+W1: PASS -- one-shot excess <= sqrt(c^2+delta^2 u^2)-c in 240/240; max excess at 1e-2: 1.39e-05
+W2: FAIL -- range-preserving injected; violations: ['r4/s0/inj_rand_0.0001: max|derr| 3.4e-04, cum 1.4e-04', 'r4/s0/inj_rand_0.001: max|derr| 3.8e-03, cum 1.9e-03', 'r4/s0/inj_rand_0.01: max|derr| 8.0e-03, cum 2.0e-03', 'r4/s1/inj_rand_0.01: max|derr| 2.4e-03, cum 9.2e-04']
+W3: PASS -- cholqr FP32 <= 1e-5, tf32e <= 1e-3; violations: []
+W4: FAIL -- range-changing injected <= delta; violations: ['r4/s0/inj_gen_0.001: max|derr| 1.2e-03, cum 3.1e-04']
+TOL: FAIL -- 1e-4 is a sensible default tolerance for the target uses (V1 and D1 and W2)
