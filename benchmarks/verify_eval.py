@@ -1,4 +1,4 @@
-"""PREREG_VERIFY evaluation: soundness (V1), slack (V2) and overhead (V3) of the FP64 orthogonality certificate.
+"""Evaluation of verify=True: soundness (V1), slack (V2) and overhead (V3) of the FP64 orthogonality certificate.
 
     python benchmarks/verify_eval.py --part v12 --device cpu --size small --out v12_small.jsonl
     python benchmarks/verify_eval.py --part v12 --device cpu --size large --out v12_large.jsonl

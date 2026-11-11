@@ -1,4 +1,4 @@
-"""Evaluate round-2 device_sweep outputs (input dtypes, robust, medium, compile, x86 CPU) — PREREG_DEVSWEEP2.
+"""Evaluate round-2 device_sweep outputs (input dtypes, robust, medium, compile, x86 CPU) (pre-registered round-2 checks).
 Usage: python benchmarks/device_sweep_judge2.py FILE.jsonl [...]"""
 import json, math, sys
 

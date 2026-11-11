@@ -1,4 +1,4 @@
-"""Evaluate a device_sweep.py output file against the registered checks (PREREG_DEVSWEEP).
+"""Evaluate a device_sweep.py output file against the pre-registered device-sweep checks.
 Usage: python benchmarks/device_sweep_judge.py sweep_X.jsonl [more.jsonl ...]"""
 import json, math, statistics as st, sys
 
