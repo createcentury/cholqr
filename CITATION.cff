@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use cholqr, please cite the software and the technical note below."
+title: "cholqr: fast, compile-friendly shifted CholeskyQR3 for batched tall-skinny matrices in PyTorch"
+type: software
+authors:
+  - family-names: Fukuda
+    given-names: Soki
+version: 0.5.0
+license: MIT
+repository-code: "https://github.com/createcentury/cholqr"
+url: "https://github.com/createcentury/cholqr"
+keywords:
+  - QR factorization
+  - CholeskyQR
+  - shifted CholeskyQR3
+  - rounding error analysis
+  - PyTorch
+  - GPU
+preferred-citation:
+  type: report
+  title: "When does shifted CholeskyQR break in FP32? A proven bound, a run-time test, and measurements across hardware"
+  authors:
+    - family-names: Fukuda
+      given-names: Soki
+  year: 2026
+  url: "TBD"
+  notes: "Technical note accompanying the cholqr library"
