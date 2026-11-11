@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **Fix: R under TF32.** With `return_r=True` and TF32 active, the accumulation of R used plain TF32 products, so R
+  (not Q) had TF32-level accuracy (residual ||Y - QR|| ~ 4e-4 measured on an RTX 4090 at precision "high"). L^T D is now
+  an elementwise column scaling and the product with the previous R uses the same 3xTF32 compensation as Q.
+  Regression test added.
 - README: speed table vs `torch.linalg.qr`, a TF32 warning, a pattern for checking outside `torch.compile`, and a
   "Formally verified core" section (Lean).
 - Documentation: the `cqr2` range is stated from the device-sweep measurements (first breakdown from cond(Y) ~ 3e3 for
