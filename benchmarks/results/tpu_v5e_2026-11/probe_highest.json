@@ -1,0 +1,283 @@
+{
+ "torch": "2.8.0+cu128",
+ "cholqr": "0.5.0",
+ "device": "xla",
+ "precision": "highest",
+ "items": [
+  {
+   "name": "cholesky_ex 2-D (64x64, SPD)",
+   "ok": true,
+   "info_shape": [],
+   "info": [
+    0
+   ],
+   "L_shape": [
+    64,
+    64
+   ],
+   "L_finite": true,
+   "seconds": 0.29,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex"
+   ]
+  },
+  {
+   "name": "cholesky_ex batched (4x64x64, SPD)",
+   "ok": true,
+   "info_shape": [
+    4
+   ],
+   "info": [
+    0,
+    0,
+    0,
+    0
+   ],
+   "L_shape": [
+    4,
+    64,
+    64
+   ],
+   "L_finite": true,
+   "seconds": 0.36,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex"
+   ]
+  },
+  {
+   "name": "cholesky_ex 2-D non-PD (G - 2I)",
+   "ok": true,
+   "info_shape": [],
+   "info": [
+    1
+   ],
+   "L_shape": [
+    64,
+    64
+   ],
+   "L_finite": true,
+   "seconds": 0.1,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex"
+   ]
+  },
+  {
+   "name": "cholesky_ex 2-D, float64",
+   "ok": true,
+   "info_shape": [],
+   "info": [
+    0
+   ],
+   "L_shape": [
+    64,
+    64
+   ],
+   "L_finite": true,
+   "seconds": 0.1,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex"
+   ]
+  },
+  {
+   "name": "solve_triangular",
+   "ok": true,
+   "shape": [
+    64,
+    64
+   ],
+   "seconds": 0.02,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "linalg.qr (Householder) 2-D",
+   "ok": true,
+   "orth": 1.3223521848527299e-06,
+   "seconds": 0.0,
+   "cpu_fallback_ops": [
+    "aten::linalg_qr"
+   ]
+  },
+  {
+   "name": "linalg.qr batched",
+   "ok": true,
+   "orth": 1.4812075727776781e-06,
+   "seconds": 0.01,
+   "cpu_fallback_ops": [
+    "aten::linalg_qr"
+   ]
+  },
+  {
+   "name": "float64 matmul",
+   "ok": true,
+   "dtype": "torch.float64",
+   "seconds": 0.0,
+   "cpu_fallback_ops": []
+  },
+  {
+   "name": "eigvalsh",
+   "ok": true,
+   "v": 1.0450390846017399e-06,
+   "seconds": 0.1,
+   "cpu_fallback_ops": []
+  },
+  {
+   "name": "cholesky_qr scqr3 on_breakdown=ignore",
+   "ok": true,
+   "orth": 8.052947652482373e-07,
+   "seconds": 2.19,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr scqr3 default",
+   "ok": true,
+   "orth": 8.052947652482373e-07,
+   "seconds": 0.07,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr cqr2 on_breakdown=ignore",
+   "ok": true,
+   "orth": 8.532496121206859e-07,
+   "seconds": 0.55,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr cqr2 default",
+   "ok": true,
+   "orth": 8.532496121206859e-07,
+   "seconds": 0.05,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr rcqr on_breakdown=ignore",
+   "ok": true,
+   "orth": 3.0090941432231387e-06,
+   "seconds": 1.08,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_qr",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr rcqr default",
+   "ok": true,
+   "orth": 2.998717868065967e-06,
+   "seconds": 0.56,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_qr",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr auto on_breakdown=ignore",
+   "ok": true,
+   "orth": 8.052947652482373e-07,
+   "seconds": 0.01,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr auto default",
+   "ok": true,
+   "orth": 8.052947652482373e-07,
+   "seconds": 0.01,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr scqr3 robust=True",
+   "ok": true,
+   "orth": 4.869552693184708e-07,
+   "seconds": 3.9,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr scqr3 verify=True",
+   "ok": true,
+   "orth": 8.052947652482373e-07,
+   "seconds": 0.01,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "cholesky_qr scqr3 default, cond 1e9 (breakdown -> fallback)",
+   "ok": true,
+   "orth": 6.587565656156774e-07,
+   "orth_raw": 14.113149084989997,
+   "seconds": 3.99,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular",
+    "aten::nonzero"
+   ]
+  },
+  {
+   "name": "cholesky_qr verify=True, cond 1e9",
+   "ok": true,
+   "orth": 6.587565656156774e-07,
+   "seconds": 3.08,
+   "cpu_fallback_ops": [
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular",
+    "aten::nonzero"
+   ]
+  },
+  {
+   "name": "orthogonality_bound",
+   "ok": true,
+   "bound": 7.510704242260088e-07,
+   "seconds": 0.39,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  },
+  {
+   "name": "contrib.powersgd.orthogonalize_ batched",
+   "ok": true,
+   "orth": 3.0315564771288517e-07,
+   "seconds": 0.33,
+   "cpu_fallback_ops": [
+    "aten::_local_scalar_dense",
+    "aten::linalg_cholesky_ex",
+    "aten::linalg_solve_triangular"
+   ]
+  }
+ ],
+ "torch_xla": "2.8.0",
+ "hw_error": "RuntimeError('Invalid device format: xla')"
+}

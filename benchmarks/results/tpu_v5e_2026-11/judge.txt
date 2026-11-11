@@ -1,0 +1,40 @@
+== quick_highest.jsonl: xla  torch 2.8.0+cu128 precision highest; runs 60
+   eps_2/u medians: {'1024x64': 3.2}
+   Theorem D violations: (a) 0/100, (c) 0/100, (b) 0/88; D1 0/28
+   rho>=5 failures 0/86; lam_hat<-2u failures 9/9; lam_hat>5u successes 90/90
+   a-priori pass-2 rule: 0/0
+   library default: orth max 4.3e-06; runs >= 1e-4: 0/60
+   detector: caught 2/2; false alarms 0/33
+   first breakdown (geometric), scqr3: {'1024x64': '1e+08'}
+   first breakdown (geometric), cqr2: {'1024x64': '1e+06'}
+   verdicts: {'D1_fp32_class': 'PASS', 'D2_theoremD': 'PASS', 'D3_rules': 'PASS', 'D4_apriori': 'FAIL', 'D5_library': 'PASS', 'D6_detector': 'PASS'}
+== quick_high.jsonl: xla  torch 2.8.0+cu128 precision high; runs 60
+   eps_2/u medians: {'1024x64': 711.1}
+   Theorem D violations: (a) 0/86, (c) 0/86, (b) 0/66; D1 0/26
+   rho>=5 failures 0/51; lam_hat<-2u failures 32/32; lam_hat>5u successes 86/86
+   a-priori pass-2 rule: 0/0
+   library default: orth max 5.8e-05; runs >= 1e-4: 0/60
+   detector: caught 0/0; false alarms 0/0
+   first breakdown (geometric), scqr3: {'1024x64': '1e+08'}
+   first breakdown (geometric), cqr2: {'1024x64': '1e+04'}
+   verdicts: {'D1_fp32_class': 'FAIL', 'D2_theoremD': 'PASS', 'D3_rules': 'PASS', 'D4_apriori': 'FAIL', 'D5_library': 'PASS', 'D6_detector': 'PASS'}
+== quick_medium.jsonl: xla  torch 2.8.0+cu128 precision medium; runs 60
+   eps_2/u medians: {'1024x64': 23951.4}
+   Theorem D violations: (a) 0/143, (c) 0/143, (b) 0/82; D1 0/27
+   rho>=5 failures 0/78; lam_hat<-2u failures 3/3; lam_hat>5u successes 139/139
+   a-priori pass-2 rule: 0/0
+   library default: orth max 2.8e-02; runs >= 1e-4: 60/60
+   detector: caught 1/56; false alarms 0/0
+   first breakdown (geometric), scqr3: {'1024x64': 'none<=1e10'}
+   first breakdown (geometric), cqr2: {'1024x64': 'none<=1e10'}
+   verdicts: {'D1_fp32_class': 'FAIL', 'D2_theoremD': 'PASS', 'D3_rules': 'PASS', 'D4_apriori': 'FAIL', 'D5_library': 'FAIL', 'D6_detector': 'FAIL'}
+== full_highest.jsonl: xla  torch 2.8.0+cu128 precision highest; runs 1632
+   eps_2/u medians: {'1024x64': 3.2, '1024x276': 3.7, '4096x64': 5.0, '4096x276': 5.7}
+   Theorem D violations: (a) 0/2570, (c) 0/2570, (b) 0/2290; D1 0/747
+   rho>=5 failures 0/2241; lam_hat<-2u failures 370/370; lam_hat>5u successes 2338/2338
+   a-priori pass-2 rule: 216/216
+   library default: orth max 1.3e-05; runs >= 1e-4: 0/1632
+   detector: caught 58/58; false alarms 1/806
+   first breakdown (geometric), scqr3: {'1024x64': '3e+07', '1024x276': '3e+07', '4096x64': '1e+07', '4096x276': '1e+07'}
+   first breakdown (geometric), cqr2: {'1024x64': '3e+04', '1024x276': '3e+04', '4096x64': '3e+04', '4096x276': '3e+04'}
+   verdicts: {'D1_fp32_class': 'PASS', 'D2_theoremD': 'PASS', 'D3_rules': 'PASS', 'D4_apriori': 'PASS', 'D5_library': 'PASS', 'D6_detector': 'PASS'}

@@ -1,0 +1,23 @@
+TPU v5e-1 (GCP spot, us-east1-c, 2026-11-12), torch 2.8.0 / torch_xla 2.8.0 / libtpu 0.0.17, cholqr 0.5.0 (library unchanged).
+Pre-registration: benchmarks/prereg/PREREG_POWERSGD_TRAIN_2026-11-12.md (part B + addendum 1).
+
+Bug of the earlier run: torch_xla 2.8 returns Tensor.amin()/amax() WITHOUT dim unreduced (shape (64,) for a 64-vector;
+.min() and .amin(dim=-1) are correct). device_sweep.py logged float(L.diagonal().amin()) -> ValueError. Fixed with
+amin(dim=-1) (commit "device_sweep: reduce the Cholesky diagonal with amin(dim=-1) ..."). cholqr uses amin(dim=-1) only.
+
+T1 sanity (mirror vs library, highest): 0 mismatches                                   PASS
+T2 quick grid, highest: all checks with data pass (D4 has 0/0 cases: no data)          PASS
+T3 eps_gram/u median, pass 2 scqr3, 1024x64, highest: 3.2 (<= 50)                     PASS
+T4 medium (1-pass bf16): library default orth > 1e-4 in 60/60 runs (> 30); max 2.8e-2;
+   breakdown flags caught 1/56                                                        PASS
+High (3-pass bf16), descriptive: eps_gram/u median 711; library default max 5.8e-5, 0/60 >= 1e-4.
+Addendum-1 full grid, highest (1632 runs): all six registered checks PASS (judge.txt): eps_gram/u 3.2, 3.7, 5.0, 5.7;
+   Theorem D/D1 violations 0; default orth >= 1e-4: 0/1632 (max 1.3e-5); detector caught 58/58, false alarms 1/806;
+   first scqr3 breakdown (geometric) 3e7, 3e7, 1e7, 1e7.
+
+Probe (probe_highest.json, probe_medium.json): every item runs. linalg.cholesky_ex, linalg.solve_triangular and
+linalg.qr are not lowered by PyTorch/XLA 2.8: they execute on the host CPU (aten fallback ops listed per item), so on a
+TPU only cholqr's matrix products run on the TPU. cholesky_ex info is a 0-d tensor (batched: shape (b,)). float64
+works (FP64 matmul rel. error 1.2e-15 vs CPU, f64_check.txt). At medium precision: default scqr3 orth 1.5e-3,
+robust=True 1.5e-3 (not caught), verify=True 7.6e-8 (certificate failed -> fallback to Householder), contrib.powersgd
+5.0e-7 (its 1e-3 check triggered the Householder fallback).

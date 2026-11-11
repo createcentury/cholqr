@@ -1,0 +1,3 @@
+f64 scalar roundtrip exact: True
+f64 matmul rel err vs CPU: 1.162384355658401e-15
+f64 elementwise (1+2^-40)*3-3: 2.7284841053187847e-12 exact 2.7284841053187847e-12
