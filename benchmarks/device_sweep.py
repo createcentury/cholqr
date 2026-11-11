@@ -83,7 +83,7 @@ def mirror(Y, method, log=True, robust=False):
         G = _gram(Q)
         s = ((1e-14 if robust else 1e-6) * l) if (method == "scqr3" and i == 0) else EPS
         A = G + (s + 1e-30) * eye
-        L, info = torch.linalg.cholesky_ex(A)
+        L, info = torch.linalg.cholesky_ex(A)    # amin below with an explicit dim: torch_xla 2.8 returns amin()/amax() without dim unreduced
         nanL = bool((~torch.isfinite(L.diagonal())).any())           # backend returned non-finite factor
         info = torch.where(torch.isfinite(L.diagonal()).all(), info, info.clamp_min(1) if int(info) == 0 else info)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
@@ -94,7 +94,7 @@ def mirror(Y, method, log=True, robust=False):
             XtX = X.mT @ X
             ev, V = torch.linalg.eigh(XtX); v = V[:, 0]
             sg = sv(X)
-            rec = dict(k=i + 1, s=s, dtype=str(Q.dtype).replace("torch.", ""), info=int(info), nanL=nanL, Lmin=float(L.diagonal().amin()), smin=float(sg[-1]),
+            rec = dict(k=i + 1, s=s, dtype=str(Q.dtype).replace("torch.", ""), info=int(info), nanL=nanL, Lmin=float(L.diagonal().amin(dim=-1)), smin=float(sg[-1]),
                        smax=float(sg[0]), gnorm=float(ev[-1]), eps_gram=spec2(Gc - XtX),
                        lam_hat=float(torch.linalg.eigvalsh(A64)[0]), vEv=float(v @ (Gc - XtX) @ v))
             if int(info) == 0:
