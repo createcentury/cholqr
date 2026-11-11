@@ -33,6 +33,7 @@
 - Benchmarks (results and pre-registrations in `benchmarks/`): `verify=True` cost, downstream effects of orthogonality
   loss, 3xTF32 range on an RTX 4090, compiled-loop cost, forming error, threshold at r = 512 / 1024, MI350X;
   `device_sweep.py` works with torch_xla's unreduced `amin`/`amax`.
+- CI: ruff and mypy (blocking), weekly pip-audit.
 
 ## 0.5.0 (2026-11-12)
 - Documentation moved from the README into `docs/` (how it works, accuracy, `verify=True`, devices, compatibility,

@@ -6,7 +6,6 @@ from fractions import Fraction
 import pytest
 import torch
 
-import cholqr
 import cholqr.core as core
 from cholqr import cholesky_qr, orthogonality_bound
 
@@ -107,7 +106,8 @@ def test_bound_sound_adversarial_direct():
         cases.append((Q0 + eps / 2 * E / E.norm()).float())
     cases.append((Q0 * torch.tensor([2.0 ** 60] + [1.0] * 7, dtype=torch.float64)).float())     # huge column
     cases.append((Q0 * 2.0 ** -140).float())                                                    # fp32 subnormals
-    Qd = Q0.float().clone(); Qd[:, 1] = Qd[:, 0]                                                # duplicated column
+    Qd = Q0.float().clone()
+    Qd[:, 1] = Qd[:, 0]  # duplicated column
     cases.append(Qd)
     cases.append(torch.zeros(96, 8))
     for dt in (torch.float16, torch.bfloat16, getattr(torch, "float8_e4m3fn", torch.float16)):
@@ -129,8 +129,10 @@ def test_bound_sound_low_precision_inputs():
 
 def test_bound_near_rank_deficient_and_batched():
     Y = _spectrum(150, 9, 1e2, seed=7)
-    Y2 = Y.clone(); Y2[:, 3] = Y2[:, 2] + 1e-7 * torch.randn(150, generator=torch.Generator().manual_seed(1))
-    Y3 = Y.clone(); Y3[:, 0] = 0
+    Y2 = Y.clone()
+    Y2[:, 3] = Y2[:, 2] + 1e-7 * torch.randn(150, generator=torch.Generator().manual_seed(1))
+    Y3 = Y.clone()
+    Y3[:, 0] = 0
     Q = cholesky_qr(torch.stack([Y, Y2, Y3]), on_breakdown="ignore")
     _assert_sound(Q)
 
@@ -140,7 +142,8 @@ def test_bound_nonfinite_and_off_grid():
     assert math.isinf(float(orthogonality_bound(Q)))                       # float64 not on the FP32 grid
     assert float(orthogonality_bound(Q.float().double())) < 1e-6
     for bad in (math.nan, math.inf):
-        Qb = Q.float().clone(); Qb[3, 1] = bad
+        Qb = Q.float().clone()
+        Qb[3, 1] = bad
         assert math.isinf(float(orthogonality_bound(Qb)))
         assert not bool(orthogonality_bound(Qb) <= 1e300)
 
@@ -325,7 +328,8 @@ def test_subnormal_entries_not_certified_any_flush_mode():
             torch.set_flush_denormal(flush)
             assert math.isinf(float(orthogonality_bound(Q)))
             assert math.isinf(float(orthogonality_bound(Qd)))
-            Qh = Q.half(); Qh[5, 2] = 2.0 ** -20                             # fp16 subnormal (normal in FP32)
+            Qh = Q.half()
+            Qh[5, 2] = 2.0 ** -20  # fp16 subnormal (normal in FP32)
             b = float(orthogonality_bound(Qh))
             assert b >= exact_err(Qh) or math.isinf(b)                       # sound in either mode
     finally:

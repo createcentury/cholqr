@@ -150,7 +150,9 @@ def test_autograd_matches_householder():
     torch.manual_seed(0)
     Y = torch.randn(64, 8, dtype=torch.float64, requires_grad=True)
     W = torch.randn(64, 64, dtype=torch.float64)
-    loss = lambda Q: ((Q @ Q.mT) * W).sum()      # sign-invariant
+    def loss(Q):                                 # sign-invariant
+        return ((Q @ Q.mT) * W).sum()
+
     g1, = torch.autograd.grad(loss(cholesky_qr(Y, out_dtype=torch.float64)), Y)
     g2, = torch.autograd.grad(loss(torch.linalg.qr(Y)[0]), Y)
     assert ((g1 - g2).norm() / g2.norm()).item() < 1e-5

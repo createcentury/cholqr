@@ -1,0 +1,23 @@
+# Known-vulnerability scan of the installed dependencies (torch). Kept out of the push / PR workflows on purpose:
+# an upstream torch advisory must not turn CI red for unrelated changes.
+name: audit
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # weekly, Monday 03:17 UTC
+  workflow_dispatch:
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install package and dependencies
+        run: |
+          uv venv
+          uv pip install .
+          uv pip freeze --exclude-editable | grep -vi '^cholqr' > requirements-audit.txt
+          cat requirements-audit.txt
+      - name: pip-audit
+        run: uvx pip-audit -r requirements-audit.txt --disable-pip --no-deps --desc

@@ -5,7 +5,6 @@ import torch
 
 def test_chunked_gram_matches_matmul():
     import torch
-    import cholqr.core as core
     from cholqr.core import _gram
     for m in (100, 512, 513, 4096, 6144, 6150):
         Y = torch.randn(3, m, 17, dtype=torch.float64)
@@ -31,10 +30,12 @@ def test_3xtf32_restores_fp32_accuracy_emulated():
     def tf32mm(X, Y):
         return (_tf32_round(X).double() @ _tf32_round(Y).double()).float()
     g = torch.Generator().manual_seed(1)
-    A = torch.randn(64, 2048, generator=g); B = torch.randn(2048, 64, generator=g)
+    A = torch.randn(64, 2048, generator=g)
+    B = torch.randn(2048, 64, generator=g)
     exact = A.double() @ B.double()
     naive = (tf32mm(A, B).double() - exact).norm() / exact.norm()
-    Ah, Al = _tf32_split(A); Bh, Bl = _tf32_split(B)
+    Ah, Al = _tf32_split(A)
+    Bh, Bl = _tf32_split(B)
     three = tf32mm(Ah, Bh) + (tf32mm(Ah, Bl) + tf32mm(Al, Bh))
     err3 = (three.double() - exact).norm() / exact.norm()
     assert naive > 1e-4 and err3 < 1e-6 and err3 < naive / 100
@@ -56,7 +57,8 @@ def test_3xtf32_gram_truncating_emulation():
     def trunc(X):
         return (X.contiguous().view(torch.int32) & ~0x1FFF).view(torch.float32)
     g = torch.Generator().manual_seed(2)
-    Q = torch.randn(4096, 64, generator=g); Q = Q / Q.norm(dim=0)
+    Q = torch.randn(4096, 64, generator=g)
+    Q = Q / Q.norm(dim=0)
     exact = Q.double().mT @ Q.double()
     Ah, Al = _tf32_split(Q)
     M = trunc(Ah).double().mT @ trunc(Al).double()

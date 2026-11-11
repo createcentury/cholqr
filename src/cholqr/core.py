@@ -405,7 +405,9 @@ def _cert_constants(m: int, l: int):
     u = Fraction(1, 2 ** 53)
     if not (2 * m * u < 1 and 2 * l * l * u < 1):                    # gamma_m, gamma_{l^2} < 1
         raise ValueError("cholqr: matrix too large for the FP64 certificate")
-    g = lambda k: k * u / (1 - k * u)
+    def g(k):
+        return k * u / (1 - k * u)
+
     alpha = 1 / ((1 - u) ** 4 * (1 - g(l * l)))
     beta = g(m) / (1 - g(m)) / ((1 - g(l)) * (1 - u) ** 2)
     return _round_up(alpha), _round_up(beta)

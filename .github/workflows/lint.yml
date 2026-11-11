@@ -1,0 +1,22 @@
+name: lint
+on:
+  push:
+  pull_request:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install (CPU torch for mypy's type information)
+        run: |
+          uv venv
+          uv pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch
+          uv pip install -e . --no-deps
+          uv pip install ruff mypy
+      - name: ruff
+        run: uv run --no-sync ruff check
+      - name: mypy
+        run: uv run --no-sync mypy

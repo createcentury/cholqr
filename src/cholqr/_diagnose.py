@@ -66,10 +66,10 @@ def _make(m, l, kappa, g) -> torch.Tensor:
     return (U * torch.logspace(0, -math.log10(kappa), l, dtype=torch.float64)) @ V.mT
 
 
-def _sweep(dev, m, l, g):
+def _sweep(dev, m, l, g) -> tuple[dict[str, Optional[float]], float]:
     """First half-decade kappa where FP32 scqr3 / cqr2 lose orthogonality (> 1e-2) without the check, and the worst
     orthogonality of the default (check + fallback) over 1e2 .. 1e10."""
-    first = {"scqr3": None, "cqr2": None}
+    first: dict[str, Optional[float]] = {"scqr3": None, "cqr2": None}
     worst_default = 0.0
     for e in range(4, 21):
         kappa = 10 ** (e / 2)
@@ -100,18 +100,20 @@ def diagnose(device: Optional[str] = None, quick: bool = True, verbose: bool = F
     t0 = time.perf_counter()
     dev = torch.device(device or _default_device())
     g = torch.Generator().manual_seed(0)
-    out = dict(torch=torch.__version__, cholqr=__version__, device=str(dev), device_name=_device_name(dev),
-               float32_matmul_precision=torch.get_float32_matmul_precision())
+    out: dict[str, object] = dict(torch=torch.__version__, cholqr=__version__, device=str(dev),
+                                  device_name=_device_name(dev),
+                                  float32_matmul_precision=torch.get_float32_matmul_precision())
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)                   # the TF32 warning is reported below instead
         eps = {f"{m}x{l}": _gram_eps(dev, m, l, g) for m, l in ((1024, 64), (4096, 276))}
         out["gram_eps_over_u"] = eps
         out["tf32_in_effect"] = max(eps.values()) > 100                   # FP32 accumulation measures ~1-60 u
         sizes = ((1024, 64),) if quick else ((1024, 64), (4096, 276))
-        out["first_breakdown_kappa"], worst = {}, 0.0
+        breakdown: dict[str, dict[str, Optional[float]]] = {}
+        out["first_breakdown_kappa"], worst = breakdown, 0.0
         for m, l in sizes:
             first, w = _sweep(dev, m, l, g)
-            out["first_breakdown_kappa"][f"{m}x{l}"] = first
+            breakdown[f"{m}x{l}"] = first
             worst = max(worst, w)
         out["default_max_orth"] = worst
         out["default_ok"] = worst < 1e-4

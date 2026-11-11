@@ -94,7 +94,8 @@ def test_cuda_graph_capture_with_ignore():
     g = torch.cuda.CUDAGraph()
     with torch.cuda.graph(g):
         Q = cholesky_qr(Y, on_breakdown="ignore")
-    g.replay(); torch.cuda.synchronize()
+    g.replay()
+    torch.cuda.synchronize()
     assert _orth(Q.cpu()) < 1e-4
 
 
@@ -124,7 +125,10 @@ def _child(q):
 def test_subprocess_spawn():
     import multiprocessing as mp
     ctx = mp.get_context("spawn")
-    q = ctx.Queue(); p = ctx.Process(target=_child, args=(q,)); p.start(); p.join(60)
+    q = ctx.Queue()
+    p = ctx.Process(target=_child, args=(q,))
+    p.start()
+    p.join(60)
     assert p.exitcode == 0 and q.get(timeout=5) < 1e-4
 
 

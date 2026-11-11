@@ -16,7 +16,7 @@ def orth_err(Q):
 @pytest.mark.parametrize("r", [1, 2, 8, 32])
 def test_orthogonalize_matches_span(b, dtype, r):
     X = torch.randn(b, 300, r).to(dtype)
-    A, B = X.clone(), X.clone()
+    B = X.clone()
     powersgd.orthogonalize_(B)
     assert B.dtype == dtype
     tol = 5e-5 if dtype == torch.float32 else 3e-2
@@ -30,7 +30,8 @@ def test_orthogonalize_matches_span(b, dtype, r):
 def test_fallback_on_ill_conditioned_batch():
     X = torch.randn(3, 400, 16)
     X[1, :, -1] = X[1, :, 0] + 1e-9 * torch.randn(400)      # nearly rank deficient -> CQR2 fails, fallback
-    B = X.clone(); powersgd.orthogonalize_(B)
+    B = X.clone()
+    powersgd.orthogonalize_(B)
     assert torch.isfinite(B).all()
     assert orth_err(B[[0, 2]]) < 5e-5
 
@@ -39,8 +40,10 @@ def test_patch_unpatch_and_ddp_hook_equivalence():
     pytest.importorskip("numpy")    # torch's PowerSGDState imports numpy
     import socket
     with socket.socket() as sk:                  # a free port, so parallel test runs on one host do not collide
-        sk.bind(("127.0.0.1", 0)); port = sk.getsockname()[1]
-    os.environ.setdefault("MASTER_ADDR", "127.0.0.1"); os.environ.setdefault("MASTER_PORT", str(port))
+        sk.bind(("127.0.0.1", 0))
+        port = sk.getsockname()[1]
+    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+    os.environ.setdefault("MASTER_PORT", str(port))
     if not dist.is_initialized():
         dist.init_process_group("gloo", rank=0, world_size=1)
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -59,7 +62,8 @@ def test_patch_unpatch_and_ddp_hook_equivalence():
         model.register_comm_hook(st, psh.powerSGD_hook)
         x = torch.randn(32, 64).to(dev)
         for _ in range(4):
-            model.zero_grad(); model(x).square().mean().backward()
+            model.zero_grad()
+            model(x).square().mean().backward()
         return [p.grad.detach().cpu().clone() for p in model.parameters()]
 
     try:
@@ -67,7 +71,8 @@ def test_patch_unpatch_and_ddp_hook_equivalence():
             g0, g1 = grads(False, batched), grads(True, batched)
             for a, c in zip(g0, g1):
                 assert torch.allclose(a, c, rtol=1e-3, atol=1e-5), (batched, (a - c).abs().max())
-        powersgd.patch(); assert powersgd.is_patched()
+        powersgd.patch()
+        assert powersgd.is_patched()
     finally:
         powersgd.unpatch()
     assert not powersgd.is_patched()
