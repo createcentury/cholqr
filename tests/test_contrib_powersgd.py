@@ -42,18 +42,22 @@ def test_patch_unpatch_and_ddp_hook_equivalence():
         dist.init_process_group("gloo", rank=0, world_size=1)
     from torch.nn.parallel import DistributedDataParallel as DDP
 
+    # upstream powerSGD_hook calls torch.cuda.synchronize(tensor.device) whenever CUDA is available, which raises for
+    # CPU tensors (also unpatched; seen on an RTX 4090 pod 2026-11-12), so run on CUDA when it exists
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     def grads(patched, batched):
         powersgd.patch() if patched else powersgd.unpatch()
         torch.manual_seed(0)
         model = DDP(torch.nn.Sequential(torch.nn.Linear(64, 96), torch.nn.ReLU(), torch.nn.Linear(96, 96),
-                                        torch.nn.ReLU(), torch.nn.Linear(96, 8)))
+                                        torch.nn.ReLU(), torch.nn.Linear(96, 8)).to(dev))
         st = psh.PowerSGDState(process_group=None, matrix_approximation_rank=4, start_powerSGD_iter=2,
                                min_compression_rate=0.5, batch_tensors_with_same_shape=batched, random_seed=0)
         model.register_comm_hook(st, psh.powerSGD_hook)
-        x = torch.randn(32, 64)
+        x = torch.randn(32, 64).to(dev)
         for _ in range(4):
             model.zero_grad(); model(x).square().mean().backward()
-        return [p.grad.clone() for p in model.parameters()]
+        return [p.grad.detach().cpu().clone() for p in model.parameters()]
 
     try:
         for batched in (False, True):

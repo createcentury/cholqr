@@ -44,8 +44,10 @@ def test_robust_up_to_1e8(kind, kappa):
 
 
 def test_default_breaks_down_beyond_range():
-    # documents the limitation: plain FP32 loses orthogonality for cond ~ 1e7 (visible with on_breakdown="ignore")
-    Y = make_spectrum(3072, 210, 1e7, "geometric")
+    # documents the limitation: plain FP32 loses orthogonality beyond its range (visible with on_breakdown="ignore").
+    # The exact onset is platform-dependent: cond 1e7 breaks on Apple M4 CPU but not on x86 Linux (RTX 4090 pod,
+    # 2026-11-12); 1e8 breaks on both.
+    Y = make_spectrum(3072, 210, 1e8, "geometric")
     assert orth_err(cholesky_qr(Y, on_breakdown="ignore")) > 1.0
 
 

@@ -1,4 +1,7 @@
 """Execution modes and unusual inputs (compatibility)."""
+import os
+import subprocess
+import sys
 import pytest
 import torch
 from cholqr import cholesky_qr
@@ -135,14 +138,21 @@ def test_torch_export_ignore():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
 def test_deterministic_mode_cuda():
-    old = torch.are_deterministic_algorithms_enabled()
-    torch.use_deterministic_algorithms(True)
-    try:
-        Y = torch.stack([_ill(seed=0), _ill(kappa=1e2, seed=1)]).cuda()
-        Q, R = cholesky_qr(Y, return_r=True)
-        assert _orth(Q.cpu()) < 1e-4
-    finally:
-        torch.use_deterministic_algorithms(old)
+    # cuBLAS needs CUBLAS_WORKSPACE_CONFIG set before CUDA initialises (true for any torch matmul under
+    # use_deterministic_algorithms), so run in a fresh process with it set
+    code = ("import torch, cholqr\n"
+            "torch.use_deterministic_algorithms(True)\n"
+            "Y = torch.randn(2, 1024, 64, device='cuda')\n"
+            "Q1 = cholqr.cholesky_qr(Y); Q2 = cholqr.cholesky_qr(Y)\n"
+            "I = torch.eye(64, device='cuda')\n"
+            "assert torch.equal(Q1, Q2)\n"
+            "assert (Q1.mT @ Q1 - I).norm(dim=(-2, -1)).max().item() < 1e-4\n"
+            "print('ok')\n")
+    env = dict(os.environ, CUBLAS_WORKSPACE_CONFIG=":4096:8")
+    src = os.path.join(os.path.dirname(__file__), "..", "src")
+    env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
+    r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0 and "ok" in r.stdout, r.stderr[-2000:]
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
