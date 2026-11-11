@@ -123,6 +123,12 @@ def exact_pass1(Y, s1):
 def device_info(dev):
     info = dict(torch=torch.__version__, cholqr=cholqr.__version__, python=platform.python_version(),
                 device=str(dev), precision=torch.get_float32_matmul_precision(), cpu=platform.processor() or platform.machine())
+    if dev.type == "xla":
+        try:
+            import torch_xla.core.xla_model as xm
+            info.update(gpu=str(xm.xla_device_hw(dev)), xla=True)
+        except Exception as e:
+            info.update(xla_info_error=type(e).__name__)
     if dev.type == "cuda":
         p = torch.cuda.get_device_properties(dev)
         info.update(gpu=p.name, capability=f"{p.major}.{p.minor}", cuda=torch.version.cuda,
@@ -144,6 +150,14 @@ def main():
     ap.add_argument("--compile", action="store_true", help="library only: torch.compile(cholesky_qr, fullgraph=True), on_breakdown ignored")
     a = ap.parse_args()
     torch.set_float32_matmul_precision(a.precision)
+    if a.device.startswith("xla"):                       # TPU via PyTorch/XLA: map the setting to XLA's matmul precision
+        import torch_xla  # noqa: F401
+        xp = {"highest": "highest", "high": "high", "medium": "default"}[a.precision]
+        try:
+            import torch_xla.backends
+            torch_xla.backends.set_mat_mul_precision(xp)
+        except Exception:
+            torch_xla._XLAC._xla_set_mat_mul_precision(xp)
     warnings.filterwarnings("ignore", message="cholqr: TF32")
     dev = torch.device(a.device)
     if a.sanity:

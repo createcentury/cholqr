@@ -5,7 +5,10 @@ import torch
 sys.path.insert(0, os.path.dirname(__file__))
 from device_sweep import make
 ap = argparse.ArgumentParser(); ap.add_argument("--device", default="cuda"); ap.add_argument("--out", default=None)
-a = ap.parse_args(); dev = torch.device(a.device); torch.set_float32_matmul_precision("highest")
+a = ap.parse_args()
+if a.device.startswith("xla"):
+    import torch_xla  # noqa: F401
+dev = torch.device(a.device); torch.set_float32_matmul_precision("highest")
 rows = []
 g = torch.Generator().manual_seed(0)
 for l in (64, 276):
