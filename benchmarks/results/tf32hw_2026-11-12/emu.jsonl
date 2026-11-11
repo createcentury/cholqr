@@ -1,4 +1,4 @@
-{"meta": true, "torch": "2.15.0", "cuda": null, "cholqr": "0.5.0", "cholqr_file": "/Users/soki/work/cholqr/src/cholqr/__init__.py", "device": "cpu", "gpu": null, "capability": null}
+{"meta": true, "torch": "2.15.0", "cuda": null, "cholqr": "0.5.0", "cholqr_file": "src/cholqr/__init__.py", "device": "cpu", "gpu": null, "capability": null}
 {"m": 1024, "l": 64, "spec": "geometric", "kappa": 100.0, "seed": 0, "method": "emu3_scqr3", "tf32_active": false, "orth": 6.0758044149683e-07, "resid": 3.2247846407696967e-07, "sin_fl": 2.007100213238761e-06, "sin_ex": 2.2189970000098463e-06, "qr_ms": 8.298208995256573}
 {"m": 1024, "l": 64, "spec": "geometric", "kappa": 100.0, "seed": 0, "method": "emu3_scqr3_raw", "tf32_active": false, "orth": 6.0758044149683e-07, "resid": 3.2247846407696967e-07, "sin_fl": 2.007100213238761e-06, "sin_ex": 2.2189970000098463e-06, "qr_ms": 7.6058750273659825}
 {"m": 1024, "l": 64, "spec": "geometric", "kappa": 100.0, "seed": 1, "method": "emu3_scqr3", "tf32_active": false, "orth": 6.433410230919359e-07, "resid": 3.3216109741628566e-07, "sin_fl": 2.146969027688653e-06, "sin_ex": 2.2987342026626346e-06, "qr_ms": 7.818708021659404}
