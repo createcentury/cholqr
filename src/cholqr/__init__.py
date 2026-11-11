@@ -6,8 +6,8 @@ Replaces ``torch.linalg.qr(Y, mode="reduced")[0]`` when only an orthonormal basi
 Algorithm: shifted CholeskyQR3 (Fukaya, Kannan, Nakatsukasa, Yamamoto, Yanagisawa, SIAM J. Sci. Comput. 42(1), 2020)
 built on CholeskyQR2 (Yamamoto, Nakatsukasa, Yanagisawa, Fukaya, ETNA 44, 2015).
 """
-from .core import cholesky_qr, orthonormal_basis
+from .core import cholesky_qr, orthonormal_basis, orthogonality_bound
 from ._diagnose import diagnose
 
-__all__ = ["cholesky_qr", "orthonormal_basis", "diagnose"]
+__all__ = ["cholesky_qr", "orthonormal_basis", "orthogonality_bound", "diagnose"]
 __version__ = "0.5.0"

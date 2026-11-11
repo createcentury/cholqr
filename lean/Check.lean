@@ -17,3 +17,12 @@ open CholQR.ShiftedPass CholQR.TheoremD
 #print axioms D_b_bound
 #print axioms cauchy_schwarz_dot
 #print axioms D_c_bound
+open CholQR.Verify
+#print axioms l2_triangle
+#print axioms l2_mono
+#print axioms l2_outer
+#print axioms gram_entry_bound
+#print axioms frob_bound
+#print axioms certificate
+#print axioms certified
+#print axioms gamma_ratio
