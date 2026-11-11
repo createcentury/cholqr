@@ -15,8 +15,8 @@ another: 3072 x 210, geometric, cond 1e7 breaks on an Apple M4 CPU but not on an
 Where the cliff is (CPU, FP32 input, 276 columns, geometric spectrum, one draw per point; `on_breakdown="ignore"`):
 for 1024 rows it lies between cond(Y) 1e6 and 2e6. For 4096 rows it sits at about 3e6: there, 2 of 4 random draws
 broke down and the other 2 did not, and all draws broke at 1e7. Orthogonality jumps from ≈ 1e-5 to ≈ 25 within
-that range. In every broken case we measured, a Cholesky factorization in pass 2 or 3
-failed (`info > 0`), and the 0.5 check catches exactly this. With the default fallback, orthogonality stays at
+that range. In every broken case we measured, the first Cholesky factorization to fail (`info > 0`) was in
+pass 2, never in pass 3, and the 0.5 check catches exactly this. With the default fallback, orthogonality stays at
 ≈ 2e-6–8e-6 up to cond(Y) = 1e10. Q is then an accurate basis of the FP32-rounded Y. For large cond(Y) that range
 can differ substantially from the range of the original higher-precision matrix, and no QR can undo that.
 
