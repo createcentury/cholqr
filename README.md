@@ -293,7 +293,8 @@ not a target yet). Results from other hardware are welcome (`benchmarks/device_s
 | Input dtypes | float64, float32, bfloat16, float16, float8_e4m3fn | computation is FP32 (FP64 first pass with `robust=True`) |
 | Matmul precision | `highest` (full accuracy); `high` (TF32: partly compensated, see Accuracy) | `medium` may use bfloat16 products on some backends: not compensated |
 | Execution modes | eager, `torch.compile` (inductor), `torch.func.vmap`, `torch.export` (with `on_breakdown="ignore"`), autograd incl. double backward, `inference_mode`, deterministic algorithms (CPU), threads, spawned processes | the breakdown check is skipped under `torch.compile`, `vmap` and tracing; `verify=True` raises there |
-| Not yet verified | Turing/Volta GPUs (T4, V100), AMD ROCm, Intel XPU, TPU (PyTorch/XLA), FSDP/DTensor inputs, deterministic mode / CUDA graphs / second GPU on CUDA (tests exist, run only on GPU machines) | reports welcome |
+| CUDA execution modes | deterministic mode, CUDA graphs, reduce-overhead compile, second GPU (2x RTX 4090, torch 2.8: full test suite 124 passed) | tests |
+| Not yet verified | Volta GPUs (V100), A100, AMD ROCm, Intel XPU, TPU (PyTorch/XLA), FSDP/DTensor inputs | reports welcome |
 | Not supported | complex dtypes (raise `TypeError`), TorchScript | |
 
 ## `method="auto"`
