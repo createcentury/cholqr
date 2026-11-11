@@ -352,7 +352,10 @@ that DDP gradients match with and without the patch.
 
 ```bash
 pip install cholqr        # or: pip install git+https://github.com/createcentury/cholqr
+uv add cholqr             # in a uv project (or: uv pip install cholqr)
 ```
+
+cholqr depends only on PyTorch (>= 2.1). If you need a specific CUDA or ROCm build of PyTorch, install that first.
 
 ## Citation
 
