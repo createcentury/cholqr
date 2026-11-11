@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.5.0 (unreleased)
+- Documentation moved from the README into `docs/` (how it works, accuracy, `verify=True`, devices, compatibility,
+  PowerSGD); the README keeps the overview, install and links.
 - **Fix: non-finite gradients after a fallback.** When a Cholesky pass failed and the backend returned NaN/inf in the
   failed factor (seen on GitHub-hosted Linux runners), the `torch.where` merge turned the zero gradient of the discarded
   branch into 0 * NaN = NaN for the whole input. With autograd on, failing matrices are now detected first without
@@ -51,7 +53,7 @@
 - `contrib.powersgd` passes `on_breakdown="ignore"` because it has its own orthogonality check.
 - `cholqr.diagnose()` / `python -m cholqr`: measures in a few seconds the Gram error class (FP32 vs TF32), the
   breakdown points, the default's orthogonality, robust availability and timing on the current device.
-- `benchmarks/device_sweep.py`, `benchmarks/bench_overhead.py`: the scripts behind the README tables.
+- `benchmarks/device_sweep.py`, `benchmarks/bench_overhead.py`: the scripts behind the tables in `docs/`.
 - `lean/`: Lean 4 proofs of the exact-algebra results (shifted-pass spectrum, positive-definiteness criterion, the
   a-posteriori orthogonality bound of Fukaya et al. 2020 eq. 3.33); the floating-point layer is not formalized.
 - **TF32:** when TF32 is active on an Ampere-or-newer NVIDIA GPU, the Gram and forming products use the 3xTF32 scheme
