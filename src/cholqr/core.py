@@ -310,11 +310,23 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
             s = (1e-14 if robust else shift) * r
         else:
             s = u                                                             # O(u) safeguard, = (u / r) * tr(G)
-        L, info = torch.linalg.cholesky_ex(G + (s + 1e-30) * eye)
+        Gs = G + (s + 1e-30) * eye
+        pre_fail = None
+        if Gs.requires_grad and torch.is_grad_enabled():
+            # Find failing matrices first without autograd and factor the identity for them instead: a failed factor can
+            # hold NaN/inf (backend dependent), and torch.where would then turn its zero gradient into 0 * NaN = NaN.
+            # The forward result is unchanged (a failed pass keeps Q); only the backward graph is made finite.
+            with torch.no_grad():
+                L0, info0 = torch.linalg.cholesky_ex(Gs)
+                pre_fail = (info0 != 0) | ~torch.isfinite(L0.diagonal(dim1=-2, dim2=-1)).all(dim=-1)
+            Gs = torch.where(pre_fail[..., None, None], eye.expand_as(Gs), Gs)
+        L, info = torch.linalg.cholesky_ex(Gs)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
         # a factorization counts as failed if cholesky_ex reports it OR its diagonal is not finite (defensive: some
         # backends can return NaN entries with info == 0)
         fail = (info != 0) | ~torch.isfinite(L.diagonal(dim1=-2, dim2=-1)).all(dim=-1)
+        if pre_fail is not None:
+            fail = fail | pre_fail
         ok = (~fail)[..., None, None]
         bad = fail if bad is None else (bad | fail)
         if i == n_pass - 1:

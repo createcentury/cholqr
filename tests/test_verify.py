@@ -360,3 +360,20 @@ def test_verify_under_jit_trace_raises():
         torch.jit.trace(lambda y: cholesky_qr(y, verify=True), torch.randn(64, 4))
     with pytest.raises(RuntimeError, match="tracing"):
         torch.jit.trace(lambda q: orthogonality_bound(q), torch.randn(64, 4))
+
+
+def test_fallback_gradient_finite_when_backend_returns_nan_factor(monkeypatch):
+    # some LAPACK backends return NaN entries in a failed Cholesky factor; the fallback merge must not leak 0 * NaN
+    real = torch.linalg.cholesky_ex
+
+    def nan_on_failure(A, **kw):
+        L, info = real(A, **kw)
+        bad = (info != 0)[..., None, None]
+        return torch.where(bad, torch.full_like(L, float("nan")), L), info
+
+    monkeypatch.setattr(torch.linalg, "cholesky_ex", nan_on_failure)
+    Yb = torch.stack([_spectrum(256, 16, 1e12, seed=0), torch.randn(256, 16)]).requires_grad_()
+    for kw in ({}, {"verify": True}):
+        Yb.grad = None
+        cholesky_qr(Yb, **kw).sum().backward()
+        assert torch.isfinite(Yb.grad).all(), kw

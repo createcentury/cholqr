@@ -1,6 +1,11 @@
 # Changelog
 
 ## 0.5.0 (unreleased)
+- **Fix: non-finite gradients after a fallback.** When a Cholesky pass failed and the backend returned NaN/inf in the
+  failed factor (seen on GitHub-hosted Linux runners), the `torch.where` merge turned the zero gradient of the discarded
+  branch into 0 * NaN = NaN for the whole input. With autograd on, failing matrices are now detected first without
+  autograd and factor the identity instead; forward results are unchanged. Regression test simulates a NaN-returning
+  backend.
 - **Certified orthogonality (`verify=True`, opt-in; new `cholqr.orthogonality_bound`).** The breakdown detector below
   is empirical. With `verify=True`, every returned Q~ is accepted only if one FP64 Gram product proves
   ||Q~ᵀQ~ − I||_F ≤ `tol` (default 1e-4 for float32/float64 output; required explicitly for half/fp8 output) for the exact values of the returned tensor; this is a theorem under IEEE
