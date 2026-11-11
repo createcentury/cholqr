@@ -9,7 +9,7 @@ SITE="${1:-$HOME/work/research-site}"
 SRC="$HERE/rounding_note_DRAFT.md"
 
 # ---- metadata (PLACEHOLDERS until publication) ----
-TITLE="When does shifted CholeskyQR break in FP32? A proven bound, a run-time test, and measurements across hardware"
+TITLE="When does shifted CholeskyQR break in FP32? An a-posteriori bound, an FP64 certificate, and measurements across hardware"
 DATE="2026/12/01"                                   # citation_publication_date, YYYY/MM/DD  [PLACEHOLDER]
 SLUG="cholqr-rounding"
 PAGE_URL="https://createcentury.github.io/posts/$SLUG/"
