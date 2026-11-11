@@ -77,3 +77,17 @@ default, 1-pass bf16). Library code unchanged.
 - Probe: descriptive (which ops work, fail or run on the CPU via PyTorch/XLA fallback).
 
 Budget: USD 2 for both parts (TPU spot v5e ~USD 0.36/chip-hour in us-central1/us-east1; part A runs locally).
+
+## Addendum 1 (2026-11-12, before looking at any TPU sweep output)
+
+- **Bug diagnosis (debug print, no results).** The crash was not caused by `info`: on torch_xla 2.8, `info` from
+  `cholesky_ex` is a 0-d tensor. `Tensor.amin()` / `amax()` *without* `dim` return the input unreduced on XLA
+  (shape (64,) for a 64-vector; `.min()` and `.amin(dim=-1)` reduce correctly). The mirror logged
+  `float(L.diagonal().amin())`, which raised. Fix (commit after the pre-registration): `amin(dim=-1)`. cholqr itself
+  only uses `amin(dim=-1)`.
+- **Extension.** The quick grid finished in about a minute per precision, so the full round-1 grid
+  (PREREG_DEVSWEEP protocol: $m \in \{1024, 4096\} \times l \in \{64, 276\}$, 6 spectra, cond 1e2-1e10 in half decades,
+  2 draws, scqr3 + cqr2 = 1632 runs) is added at precision highest, judged with `benchmarks/device_sweep_judge.py`
+  (prediction: all registered checks pass, as on the other devices). Decided before opening the quick-grid files.
+- **Smoke (part A) timings seen:** median step 0.31 s (torch, contrib), 0.39 s (verify), 0.33-0.36 s (injected), orth
+  time per step 0.6 / 1.8 / 7.3 ms. P8 is not changed.
