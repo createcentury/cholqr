@@ -29,6 +29,14 @@ _GRAM_CHUNK = 256
 _GRAM_SPLITK_MIN_ROWS = 2048   # below this the plain GEMM is used (A100 A/B measurements)
 
 
+def _in_functorch(Y: torch.Tensor) -> bool:
+    """True inside torch.func transforms (vmap, grad, ...), where data-dependent Python control flow is not allowed."""
+    try:
+        return bool(torch._C._functorch.is_functorch_wrapped_tensor(Y))
+    except Exception:
+        return False
+
+
 def _tf32_active(Q: torch.Tensor) -> bool:
     """True if a float32 CUDA matmul on Q may run in TF32: an NVIDIA GPU with compute capability >= 8.0 (Ampere or newer)
     and TF32 allowed (new API torch.backends.cuda.matmul.fp32_precision == "tf32", else the legacy allow_tf32 flag)."""
@@ -146,7 +154,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             still flagged, with Householder ``torch.linalg.qr``. ``"warn"``: warn and return the unrepaired result.
             ``"raise"``: raise ``torch.linalg.LinAlgError``. ``"ignore"``: return the result as computed (the 0.4
             behaviour). Every option except ``"ignore"`` costs one host synchronization (reading a flag) per call.
-            While compiling (``torch.compile``) the check is skipped, as with ``"ignore"``, so the function still
+            While compiling (``torch.compile``) and inside ``torch.func`` transforms (``vmap``, ``grad``) the check is skipped, as with ``"ignore"``, so the function still
             compiles into a single graph; check orthogonality yourself there or use ``robust=True``.
     Returns:
         Q of shape (..., m, r), or (Q, R) with R of shape (..., r, r) if ``return_r``.
@@ -179,7 +187,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             return _householder(Y, return_r, out_dtype)
         method = "scqr3"
     Q, R, bad = _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator)
-    if on_breakdown != "ignore" and not _is_compiling() and bool(bad.any()):
+    if on_breakdown != "ignore" and not _is_compiling() and not _in_functorch(Y) and bool(bad.any()):
         n_bad, n_all = int(bad.sum()), bad.numel()
         if on_breakdown == "raise":
             raise torch.linalg.LinAlgError(
