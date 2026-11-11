@@ -253,7 +253,8 @@ def test_verify_under_compile_raises():
         f(torch.randn(64, 4))
     torch._dynamo.reset()
     f = torch.compile(lambda y: cholesky_qr(y, verify=True), backend="eager", fullgraph=True)
-    with pytest.raises(RuntimeError, match="verify=True is not available while compiling"):
+    # with fullgraph=True some torch versions (e.g. 2.8) wrap our RuntimeError in Dynamo's own message
+    with pytest.raises(RuntimeError, match="verify=True is not available while compiling|Observed exception"):
         f(torch.randn(64, 4))
     torch._dynamo.reset()
 
