@@ -221,8 +221,8 @@ run with orthogonality > 1e-4 (false alarms in parentheses).
 
 The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
 `python -m cholqr` reports the same Gram-error class for a random well-conditioned matrix, so its numbers are smaller.
-Not measured yet: NVIDIA A100 (run incomplete), T4 (no capacity when we tried), and Google TPUs (cholqr has no XLA
-path). Results from other hardware are welcome (`benchmarks/device_sweep.py`).
+Not measured yet: NVIDIA A100 (run incomplete), T4 (no capacity when we tried), and Google TPUs (torch_xla; untested,
+not a target yet). Results from other hardware are welcome (`benchmarks/device_sweep.py`).
 
 ## Compatibility
 
