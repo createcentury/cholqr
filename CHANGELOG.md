@@ -15,6 +15,10 @@
   - Not caught: gradual loss of orthogonality without a failed factorization (rcqr above ~1e8, cqr2 near its
     limit on some spectra, custom `passes`). See the README.
   - Exactly rank-deficient inputs (zero columns) now get an orthonormal Q with the default.
+  - Last-pass threshold derived from the per-pass bound (orthogonality ~ c u / Lmin^2, c measured 18-33 for FP32 Gram
+    orders): Lmin < sqrt(64 u / 1e-4) = 0.195. In a pre-registered check on unseen data it flagged 155/155 (CPU) and
+    56/56 (Apple GPU) runs whose orthogonality exceeded 1e-4, with false alarms 4/1931 and 0/760. A first draft with 1e-2
+    caught 65/155. In particular, cqr2's gradual loss near its limit (no failed factorization) is now repaired.
 - **Fix:** FP32 inputs with entries above ~1e19 overflowed the first column-norm computation and returned Q = 0.
   Columns whose norm overflows are now divided by their maximum first (branch-free; results for other inputs are
   unchanged). This applies to all methods, including the pre-scaling of `rcqr`.

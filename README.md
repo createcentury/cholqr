@@ -18,8 +18,9 @@ fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synch
 
 **Breakdown detection and fallback (0.5).** CholeskyQR breaks down when the input is too ill-conditioned for the
 chosen method. Before 0.5 the result then silently lost orthogonality. In eager mode, `cholqr` now detects this and
-recomputes only the affected matrices: first with an FP64 first pass, then with Householder QR. The check reuses
-the small r x r Cholesky factors the passes already compute, so it adds no Gram product and no extra pass over
+recomputes only the affected matrices: first with an FP64 first pass, then with Householder QR. The check (a failed factorization, or a last-pass Cholesky
+diagonal below 0.195: a pass on X leaves orthogonality ~ c·u/Lmin² with c ≈ 18–33 measured, so 0.195 targets 1e-4 with
+a 2x margin on c) reuses the small r x r Cholesky factors the passes already compute, so it adds no Gram product and no extra pass over
 the data. It does cost one host synchronization per call. Choose the behaviour with `on_breakdown`:
 `"fallback"` (default), `"warn"`, `"raise"` or `"ignore"` (the 0.4 behaviour, no synchronization). Inside
 `torch.compile` the check is skipped.
@@ -130,7 +131,8 @@ can differ substantially from the range of the original higher-precision matrix,
 - **What the check does not catch.** It detects failed Cholesky factorizations and numerically rank-deficient
   last-pass inputs. It does not catch gradual loss of orthogonality:
   - `"rcqr"` above cond(Y) ~ 1e8: ≈ 3e-4 at 1e9.
-  - `"cqr2"` on some spectra near its limit: up to ≈ 2e-2 measured at cond 3e6 with a linear spectrum.
+  - (`"cqr2"` near its limit on some spectra, which used to degrade to ≈ 1e-2 without a failed factorization, is now
+    caught by the last-pass threshold below.)
   - Custom `passes` (e.g. `passes=1`): the check is calibrated for the default pass counts only.
 - **Cost for rank-deficient inputs.** If your inputs are routinely rank deficient (e.g. a sketch wider than the
   matrix rank), every such call takes the fallback: one host synchronization plus a Householder QR. Use

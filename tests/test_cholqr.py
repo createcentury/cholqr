@@ -276,3 +276,16 @@ def test_overflowing_column_norm_gives_orthonormal_q():
     Y = (torch.rand(512, 32, generator=torch.Generator().manual_seed(0)) * 2 - 1) * 3e37
     for method in ("scqr3", "cqr2", "rcqr"):
         assert orth_err(cholesky_qr(Y, method=method, on_breakdown="ignore")) < 1e-4
+
+
+def test_cqr2_gradual_loss_is_flagged_and_repaired():
+    # linear spectrum near cqr2's limit: all Cholesky factorizations succeed but orthogonality degrades gradually
+    g = torch.Generator().manual_seed(3)
+    U = torch.linalg.qr(torch.randn(1024, 64, generator=g, dtype=torch.float64))[0]
+    V = torch.linalg.qr(torch.randn(64, 64, generator=g, dtype=torch.float64))[0]
+    bad = 0
+    for kappa in (3e6, 1e7, 3e7, 1e8):
+        Y = ((U * torch.linspace(1, 1 / kappa, 64, dtype=torch.float64)) @ V.mT).float()
+        bad += orth_err(cholesky_qr(Y, method="cqr2", on_breakdown="ignore")) > 1e-4
+        assert orth_err(cholesky_qr(Y, method="cqr2")) < 1e-4
+    assert bad >= 1      # the case actually occurs (otherwise the test is vacuous)

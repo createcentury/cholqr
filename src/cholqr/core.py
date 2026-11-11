@@ -8,7 +8,11 @@ __all__ = ["cholesky_qr", "orthonormal_basis"]
 
 _METHODS = ("scqr3", "cqr2", "rcqr", "auto")
 _ON_BREAKDOWN = ("fallback", "warn", "raise", "ignore")
-_BREAKDOWN_LMIN = 1e-2   # last-pass Cholesky diagonal below this = the last pass's input was numerically rank deficient
+# Last-pass test. A CholeskyQR pass on X leaves orthogonality ~ c u / Lmin^2 (Lmin = smallest diagonal entry of its
+# Cholesky factor; c = 18-33 measured for FP32 Gram orders). Flagging Lmin < sqrt(64 u / 1e-4) = 0.195 targets a
+# final orthogonality of 1e-4 with a 2x safety factor on c. Pre-registered check on unseen data: caught 155/155 (CPU) and
+# 56/56 (Apple GPU) runs with orthogonality > 1e-4, false alarms 4/1931 and 0/760; the 0.5.0 value 1e-2 caught 65/155.
+_BREAKDOWN_LMIN = math.sqrt(64 * 2.0 ** -24 / 1e-4)
 _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A100 measurements, see README)
 
 
@@ -65,7 +69,8 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
 
     Breakdown detection (new in 0.5): a matrix is flagged when a Cholesky factorization fails in any pass (the pass was
     skipped, so the result is not orthonormal) or when the last pass's Cholesky factor has a diagonal entry below
-    ``1e-2`` (the input to the last pass was numerically rank deficient, e.g. a zero column). Both tests reuse the r x r
+    ``0.195`` (the input to the last pass was so ill-conditioned that the final orthogonality can exceed ~1e-4, e.g. cqr2
+    near its limit, or numerically rank deficient, e.g. a zero column). Both tests reuse the r x r
     factors already computed; they add no Gram product. This is how FP32 ``scqr3`` fails beyond cond(Y) ~ 1e6-1e7:
     without the check the result silently loses orthogonality (||Q^T Q - I||_F ~ 20-90).
 
