@@ -206,7 +206,13 @@ but the certificate accepts is returned as is).
 | CUDA graphs | not capturable (host synchronization) |
 
 **Cost** (median, verify=True vs the default, fp32, no fallback triggered; `benchmarks/verify_eval.py --part v3`):
-COSTTABLE
+| device (torch 2.15) | 1 x 4096 x 276 | 8 x 4096 x 276 | 16 x 1024 x 64 | 4 x 8192 x 128 |
+|---|---|---|---|---|
+| Apple M4 CPU | +27% (6.0 → 7.6 ms) | +25% (38 → 47 ms) | +27% (3.4 → 4.3 ms) | +35% (12.0 → 16.2 ms) |
+| Apple M4 GPU (MPS; check on CPU) | +75% (3.2 → 5.6 ms) | +83% (13.5 → 24.7 ms) | +38% (1.5 → 2.1 ms) | +134% (3.3 → 7.7 ms) |
+
+Single run on a loaded machine; CUDA not measured yet. The cost is one FP64 Gram product (2·m·r² flops per matrix);
+on GPUs with slow FP64 (consumer cards run FP64 at 1/64 of FP32) expect a larger relative cost.
 
 **What is not covered.** Orthogonality only: not the accuracy of the subspace range(Q) vs range(Y), nor of R
 (Y = QR). A residual certificate for ‖Y − QR‖ is future work. Q requested in float16/bfloat16/float8 can usually not be

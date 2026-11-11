@@ -120,7 +120,8 @@ def cases(size, device):
                     tag = f"{m}x{l}/{kind}/{kappa:g}/s{seed}"
                     for method in ("scqr3", "cqr2", "rcqr"):
                         yield f"cholqr/{method}/{tag}", Y, dict(method=method), nullcontext
-                    yield f"cholqr/scqr3-robust/{tag}", Y, dict(robust=True), nullcontext
+                    if device != "mps":                                     # no FP64 on MPS
+                        yield f"cholqr/scqr3-robust/{tag}", Y, dict(robust=True), nullcontext
                     if tf32ctx is not None:
                         for method in ("scqr3", "cqr2"):
                             yield f"tf32/{method}/{tag}", Y, dict(method=method), tf32ctx
@@ -131,7 +132,8 @@ def cases(size, device):
         for dt in dts:
             yield f"lowp-in/{dt}/{m}x{l}", Y.to(dt), dict(out_dtype=torch.float32), nullcontext
             yield f"lowp-inout/{dt}/{m}x{l}", Y.to(dt), dict(), nullcontext
-        yield f"out-f64/{m}x{l}", Y.double(), dict(), nullcontext
+        if device != "mps":
+            yield f"out-f64/{m}x{l}", Y.double(), dict(), nullcontext
         # near rank deficient, batched
         g = torch.Generator().manual_seed(1)
         Y2 = Y.clone(); Y2[:, 3] = Y2[:, 2] + 1e-7 * torch.randn(m, generator=g)
@@ -205,10 +207,18 @@ def run_v12(args):
     n = 0
     t0 = time.time()
     for name, Y, kw, ctx in cases(args.size, dev.type):
-        Yd = Y.to(dev)
+        try:
+            Yd = Y.to(dev)
+        except (RuntimeError, TypeError) as ex:                 # e.g. float8_e5m2 on MPS
+            print(f"skip {name}: {ex}", file=sys.stderr)
+            continue
         with ctx():
-            Q, _, bad = core._cqr(Yd, kw.get("method", "scqr3"), kw.get("robust", False), False,
-                                  kw.get("out_dtype"), 1e-6, None, 1.25, None)
+            try:
+                Q, _, bad = core._cqr(Yd, kw.get("method", "scqr3"), kw.get("robust", False), False,
+                                      kw.get("out_dtype"), 1e-6, None, 1.25, None)
+            except (RuntimeError, TypeError) as ex:             # e.g. float8_e5m2 -> float32 on MPS
+                print(f"skip {name}: {ex}", file=sys.stderr)
+                continue
             # end-to-end: verify=True, fallback and raise
             try:
                 Qv = cholesky_qr(Yd, verify=True, **kw)

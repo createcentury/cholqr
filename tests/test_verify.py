@@ -290,3 +290,12 @@ def test_verify_cuda_under_tf32_and_highest():
                 assert exact_err(Q[k].cpu()) <= 1e-4
     finally:
         torch.set_float32_matmul_precision(old)
+
+
+def test_verify_fallback_autograd_and_inference_mode():
+    Yb = torch.stack([_spectrum(256, 16, 1e12, seed=0), torch.randn(256, 16)]).requires_grad_()
+    Q = cholesky_qr(Yb, verify=True)
+    Q.sum().backward()
+    assert torch.isfinite(Yb.grad).all()
+    with torch.inference_mode():
+        assert bool((orthogonality_bound(cholesky_qr(Yb.detach(), verify=True)) <= 1e-4).all())

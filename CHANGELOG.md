@@ -1,6 +1,18 @@
 # Changelog
 
 ## 0.5.0 (unreleased)
+- **Certified orthogonality (`verify=True`, opt-in; new `cholqr.orthogonality_bound`).** The breakdown detector below
+  is empirical. With `verify=True`, every returned Q~ is accepted only if one FP64 Gram product proves
+  ||Q~ᵀQ~ − I||_F ≤ `tol` (default 1e-4) for the exact values of the returned tensor; this is a theorem under IEEE
+  FP64 arithmetic in any summation order (with or without FMA), independent of TF32, of the device's FP32 GEMMs and of
+  how Q~ was computed. Bound: computed error · (1 + (r²+4)u) + m·u·tr(Ĝ) (u = 2^-53; ~1.3e-10 for 4096 x 276).
+  Uncertified matrices follow `on_breakdown`: `"fallback"` recomputes them (FP64 first pass, then Householder QR),
+  re-verifies, and raises `torch.linalg.LinAlgError` if still uncertified; `"warn"`, `"raise"` as before;
+  `"ignore"` is rejected. With `verify=True` the certificate replaces the empirical flags. Raises `RuntimeError`
+  under `torch.compile`/export and `torch.func` transforms (no data-dependent fallback there; apply
+  `orthogonality_bound` to the result outside). MPS: the check runs on the CPU. Q returned in float16/bfloat16/float8
+  is generally not certifiable at 1e-4. Orthogonality only: subspace and R accuracy are not certified.
+  `verify=False` (default) is unchanged. Proof of the algebraic part in `lean/CholQR/Verify.lean`.
 - **Breakdown detection and fallback (new default).** Beyond its range (FP32 `scqr3`: cond(Y) about 1e7, between ~3e5 and ~3e7 depending on spectrum and platform; `cqr2`: about
   3e4), CholeskyQR used to return a non-orthonormal Q without any error. A matrix is now flagged when a pass's
   `cholesky_ex` fails, when its Cholesky factor has a non-finite diagonal, or when the last pass's Cholesky factor has a
