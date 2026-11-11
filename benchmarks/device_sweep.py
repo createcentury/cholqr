@@ -23,6 +23,10 @@ SPECTRA = ("geometric", "powerlaw", "spike", "cluster", "linear", "staircase")
 
 
 def make(m, l, kappa, spec, g):
+    return make64(m, l, kappa, spec, g).float()
+
+
+def make64(m, l, kappa, spec, g):
     U = torch.linalg.qr(torch.randn(m, l, dtype=torch.float64, generator=g))[0]
     V = torch.linalg.qr(torch.randn(l, l, dtype=torch.float64, generator=g))[0]
     if spec == "geometric":
@@ -38,7 +42,7 @@ def make(m, l, kappa, spec, g):
     else:  # staircase
         s = torch.cat([torch.full((l - 3 * (l // 4),) if b == 3 else (l // 4,), kappa ** (-b / 3), dtype=torch.float64)
                        for b in range(4)])
-    return ((U * s) @ V.T).float()
+    return (U * s) @ V.T
 
 
 def _svd_vals(M):
@@ -57,21 +61,23 @@ def spec2(M):
     return float(_svd_vals(M)[0])
 
 
-def mirror(Y, method, log=True):
-    """cholqr's _cqr passes for scqr3 / cqr2 (FP32, no robust), on Y's device."""
+def mirror(Y, method, log=True, robust=False):
+    """cholqr's _cqr passes for scqr3 / cqr2 (robust: FP64 first pass), on Y's device."""
     l = Y.shape[-1]
     n_pass = {"scqr3": 3, "cqr2": 2}[method]
-    Q = Y.float()
-    eye = torch.eye(l, dtype=torch.float32, device=Y.device)
+    Q = Y.double() if robust else Y.float()
+    eye = torch.eye(l, dtype=Q.dtype, device=Y.device)
     I64 = torch.eye(l, dtype=torch.float64)
     passes = []
     for i in range(n_pass):
-        if i == 0:
+        if robust and i == 1:
+            Q = Q.float(); eye = eye.float()
+        if i == 0 and Q.dtype == torch.float32:
             Q, _ = _prescale(Q)
         d = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)
         Q = Q / d
         G = _gram(Q)
-        s = (1e-6 * l) if (method == "scqr3" and i == 0) else EPS
+        s = ((1e-14 if robust else 1e-6) * l) if (method == "scqr3" and i == 0) else EPS
         A = G + (s + 1e-30) * eye
         L, info = torch.linalg.cholesky_ex(A)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
@@ -82,7 +88,7 @@ def mirror(Y, method, log=True):
             XtX = X.mT @ X
             ev, V = torch.linalg.eigh(XtX); v = V[:, 0]
             sg = sv(X)
-            rec = dict(k=i + 1, s=s, info=int(info), Lmin=float(L.diagonal().amin()), smin=float(sg[-1]),
+            rec = dict(k=i + 1, s=s, dtype=str(Q.dtype).replace("torch.", ""), info=int(info), Lmin=float(L.diagonal().amin()), smin=float(sg[-1]),
                        smax=float(sg[0]), gnorm=float(ev[-1]), eps_gram=spec2(Gc - XtX),
                        lam_hat=float(torch.linalg.eigvalsh(A64)[0]), vEv=float(v @ (Gc - XtX) @ v))
             if int(info) == 0:
@@ -99,8 +105,10 @@ def mirror(Y, method, log=True):
 
 def exact_pass1(Y, s1):
     """FP64 exact pass 1 on the FP32 input (after the same normalisation), normalised: sigma_min^2 (a-priori rule)."""
-    Yn = Y.double(); Yn = Yn / Yn.norm(dim=0, keepdim=True)
-    L = torch.linalg.cholesky(Yn.mT @ Yn + s1 * torch.eye(Y.shape[1], dtype=torch.float64))
+    Yn = Y.double(); Yn = Yn / Yn.norm(dim=0, keepdim=True).clamp_min(1e-300)
+    L, info = torch.linalg.cholesky_ex(Yn.mT @ Yn + s1 * torch.eye(Y.shape[1], dtype=torch.float64))
+    if int(info) != 0:          # exactly rank-deficient input (e.g. FP8): not defined
+        return None
     Q1 = torch.linalg.solve_triangular(L, Yn.mT, upper=False).mT
     Q1 = Q1 / Q1.norm(dim=0, keepdim=True)
     return float(sv(Q1)[-1]) ** 2
@@ -124,6 +132,10 @@ def main():
     ap.add_argument("--sanity", action="store_true")
     ap.add_argument("--prefix", default="DEV-")
     ap.add_argument("--quick", action="store_true", help="small grid (smoke test)")
+    ap.add_argument("--input-dtype", default="float32", choices=["float64", "float32", "bfloat16", "float16", "float8_e4m3fn"])
+    ap.add_argument("--robust", action="store_true", help="FP64 first pass (scqr3 only)")
+    ap.add_argument("--draws", type=int, default=2)
+    ap.add_argument("--compile", action="store_true", help="library only: torch.compile(cholesky_qr, fullgraph=True), on_breakdown ignored")
     a = ap.parse_args()
     torch.set_float32_matmul_precision(a.precision)
     warnings.filterwarnings("ignore", message="cholqr: TF32")
@@ -141,28 +153,46 @@ def main():
     ms, ls = ((1024,), (64,)) if a.quick else ((1024, 4096), (64, 276))
     kap = [10 ** (x / 2) for x in (range(4, 21, 4) if a.quick else range(4, 21))]
     t0 = time.time(); n = 0
+    in_dt = getattr(torch, a.input_dtype)
+    methods = ("scqr3",) if a.robust else ("scqr3", "cqr2")
+    U_IN = {"float64": 2.0 ** -53, "float32": 2.0 ** -24, "bfloat16": 2.0 ** -9, "float16": 2.0 ** -11, "float8_e4m3fn": 2.0 ** -4}[a.input_dtype]
+    fn = torch.compile(cholqr.cholesky_qr, fullgraph=True) if a.compile else None
     with open(a.out, "a") as f:
-        f.write(json.dumps(dict(header=True, **device_info(dev))) + "\n")
+        f.write(json.dumps(dict(header=True, input_dtype=a.input_dtype, robust=a.robust, compile=a.compile,
+                                **device_info(dev))) + "\n")
         for m in ms:
             for l in ls:
                 for spec in SPECTRA:
                     for kappa in kap:
-                        for draw in (1, 2):
+                        for draw in range(1, a.draws + 1):
                             key = f"{a.prefix}{m}-{l}-{spec}-{round(math.log10(kappa) * 2)}-{draw}"
                             g = torch.Generator().manual_seed(7000 + zlib.crc32(key.encode()) % 100000)
-                            Y = make(m, l, kappa, spec, g)
-                            ky = sv(Y)
-                            pre = exact_pass1(Y, 1e-6 * l)
-                            Yd = Y.to(dev)
-                            for method in ("scqr3", "cqr2"):
-                                Q, passes = mirror(Yd, method)
-                                Qd = Q.cpu().double()
-                                Ql = cholqr.cholesky_qr(Yd, method=method).cpu().double()
-                                I64 = torch.eye(l, dtype=torch.float64)
-                                f.write(json.dumps(dict(m=m, l=l, spec=spec, kappa=kappa, draw=draw, method=method,
-                                    precision=a.precision, kappa_eff=float(ky[0] / ky[-1]), smin2_q1n_exact=pre,
-                                    passes=passes, orth=spec2(Qd.mT @ Qd - I64),
-                                    orth_lib_default=spec2(Ql.mT @ Ql - I64))) + "\n")
+                            Y64 = make64(m, l, kappa, spec, g)
+                            if a.input_dtype != "float64":     # scale to max |entry| = 1 (as for scaled low-precision data)
+                                Y64 = Y64 / Y64.abs().max()
+                            Yin = Y64.to(in_dt)                 # the input as the caller holds it
+                            Yi64 = Yin.double()
+                            ky = sv(Yi64)
+                            gd = torch.Generator().manual_seed(1 + zlib.crc32(key.encode()) % 100000)
+                            Dm = (torch.rand(Y64.shape, dtype=torch.float64, generator=gd) * 2 - 1) * U_IN
+                            kc = sv(Y64 + Y64 * Dm)
+                            pre = exact_pass1(Yin.float(), 1e-6 * l) if not a.robust else None
+                            Yd = Yin.to(dev)
+                            I64 = torch.eye(l, dtype=torch.float64)
+                            for method in methods:
+                                rec = dict(m=m, l=l, spec=spec, kappa=kappa, draw=draw, method=method, precision=a.precision,
+                                           input_dtype=a.input_dtype, robust=a.robust, compile=a.compile,
+                                           kappa_eff=float(ky[0] / ky[-1]), kappa_cw=float(kc[0] / kc[-1]), smin2_q1n_exact=pre)
+                                if a.compile:
+                                    Qc = fn(Yd, method=method, robust=a.robust, on_breakdown="ignore").cpu().double()
+                                    Qe = cholqr.cholesky_qr(Yd, method=method, robust=a.robust, on_breakdown="ignore").cpu().double()
+                                    rec.update(orth_compiled=spec2(Qc.mT @ Qc - I64), orth_eager=spec2(Qe.mT @ Qe - I64))
+                                else:
+                                    Q, passes = mirror(Yd, method, robust=a.robust)
+                                    Qd = Q.cpu().double()
+                                    Ql = cholqr.cholesky_qr(Yd, method=method, robust=a.robust, out_dtype=torch.float32).cpu().double()
+                                    rec.update(passes=passes, orth=spec2(Qd.mT @ Qd - I64), orth_lib_default=spec2(Ql.mT @ Ql - I64))
+                                f.write(json.dumps(rec) + "\n")
                                 n += 1
                             f.flush()
     print(f"done {n} runs in {time.time() - t0:.0f}s -> {a.out}", file=sys.stderr)

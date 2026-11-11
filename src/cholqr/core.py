@@ -156,13 +156,14 @@ def _repair(Y, Q, R, bad, method, robust, return_r, out_dtype, shift, passes, ov
         if bool(bad_s.any()):
             j = bad_s.nonzero().squeeze(1)
             Qh, Rh = _householder(Ys[j], True, out_dtype)
-            Qs = Qs.index_copy(0, j, Qh)
-            Rs = Rs.index_copy(0, j, Rh) if return_r else None
+            Qs = Qs.float().index_copy(0, j, Qh.float()).to(Qs.dtype)
+            Rs = Rs.float().index_copy(0, j, Rh.float()).to(Rs.dtype) if return_r else None
     else:
         Qs, Rs = _householder(Ys, True, out_dtype)
-    Q = Q.reshape(-1, m, r).index_copy(0, idx, Qs.to(Q.dtype)).reshape(shape)
+    # merge in FP32 (index_copy is not implemented for every dtype, e.g. float8), then cast back
+    Q = Q.float().reshape(-1, m, r).index_copy(0, idx, Qs.float()).reshape(shape).to(Q.dtype)
     if return_r:
-        R = R.reshape(-1, r, r).index_copy(0, idx, Rs.to(R.dtype)).reshape(R.shape)
+        R = R.float().reshape(-1, r, r).index_copy(0, idx, Rs.float()).reshape(R.shape).to(R.dtype)
     return Q, R
 
 

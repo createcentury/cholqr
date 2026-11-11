@@ -65,7 +65,7 @@ def judge(path):
     cal = {k: st.median(v) for k, v in cal.items()}
     tot = cor = 0
     for r in s3:
-        if r["draw"] != 2: continue
+        if r["draw"] != 2 or r.get("smin2_q1n_exact") is None: continue
         rp = (r["smin2_q1n_exact"] + EPS) / cal[(r["m"], r["l"])]
         if 1 / 3 <= rp <= 3: continue
         tot += 1; cor += (rp < 1) == (r["passes"][1]["info"] > 0)

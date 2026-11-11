@@ -289,3 +289,17 @@ def test_cqr2_gradual_loss_is_flagged_and_repaired():
         bad += orth_err(cholesky_qr(Y, method="cqr2", on_breakdown="ignore")) > 1e-4
         assert orth_err(cholesky_qr(Y, method="cqr2")) < 1e-4
     assert bad >= 1      # the case actually occurs (otherwise the test is vacuous)
+
+
+@pytest.mark.parametrize("dtype", ["bfloat16", "float16", "float8_e4m3fn"])
+def test_low_precision_inputs_with_fallback(dtype):
+    dt = getattr(torch, dtype, None)
+    if dt is None:
+        pytest.skip(f"{dtype} not available")
+    g = torch.Generator().manual_seed(0)
+    Y = torch.randn(256, 16, generator=g)
+    Y[:, 3] = Y[:, 2]                                  # exactly rank deficient -> fallback path
+    Q = cholesky_qr((Y / Y.abs().max()).to(dt), out_dtype=torch.float32)
+    assert orth_err(Q) < 1e-4
+    Q, R = cholesky_qr((Y / Y.abs().max()).to(dt), return_r=True)      # default out dtype = input dtype
+    assert Q.dtype == dt and R.dtype == dt
