@@ -6,6 +6,15 @@ import torch
 
 __all__ = ["cholesky_qr", "orthonormal_basis"]
 
+def _is_compiling() -> bool:
+    """torch.compiler.is_compiling (torch >= 2.3); torch._dynamo.is_compiling on older versions."""
+    f = getattr(torch.compiler, "is_compiling", None)
+    if f is None:
+        from torch import _dynamo
+        f = _dynamo.is_compiling
+    return f()
+
+
 _METHODS = ("scqr3", "cqr2", "rcqr", "auto")
 _ON_BREAKDOWN = ("fallback", "warn", "raise", "ignore")
 # Last-pass test. A CholeskyQR pass on X leaves orthogonality ~ c u / Lmin^2 (Lmin = smallest diagonal entry of its
@@ -97,7 +106,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     """
     if Y.dim() < 2:
         raise ValueError("Y must have at least 2 dimensions (..., m, r)")
-    if Y.is_complex():
+    if Y.dtype.is_complex:
         raise TypeError("cholesky_qr supports real tensors only (got a complex dtype)")
     if method not in _METHODS:
         raise ValueError(f"method must be one of {_METHODS}, got {method!r}")
@@ -107,7 +116,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         raise ValueError(f"on_breakdown must be one of {_ON_BREAKDOWN}, got {on_breakdown!r}")
     # is_compiling() must be evaluated first: older Dynamo (e.g. torch 2.7) cannot trace
     # get_float32_matmul_precision() (returns a str) and fails under fullgraph=True.
-    if not torch.compiler.is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() != "highest":
+    if not _is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() != "highest":
         warnings.warn("cholqr: TF32 matmul is enabled (float32_matmul_precision != 'highest'). Gram products are then "
                       "computed at ~1e-3 precision: orthogonality degrades to ~1e-4 (scqr3) and cqr2 becomes unreliable "
                       "already near cond(Y) ~ 1e3. Use torch.set_float32_matmul_precision('highest') around the call.",
@@ -121,7 +130,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             return _householder(Y, return_r, out_dtype)
         method = "scqr3"
     Q, R, bad = _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator)
-    if on_breakdown != "ignore" and not torch.compiler.is_compiling() and bool(bad.any()):
+    if on_breakdown != "ignore" and not _is_compiling() and bool(bad.any()):
         n_bad, n_all = int(bad.sum()), bad.numel()
         if on_breakdown == "raise":
             raise torch.linalg.LinAlgError(
@@ -211,8 +220,11 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
             s = u                                                             # O(u) safeguard, = (u / r) * tr(G)
         L, info = torch.linalg.cholesky_ex(G + (s + 1e-30) * eye)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
-        ok = (info == 0)[..., None, None]
-        bad = (info != 0) if bad is None else (bad | (info != 0))
+        # a factorization counts as failed if cholesky_ex reports it OR its diagonal is not finite (defensive: some
+        # backends can return NaN entries with info == 0)
+        fail = (info != 0) | ~torch.isfinite(L.diagonal(dim1=-2, dim2=-1)).all(dim=-1)
+        ok = (~fail)[..., None, None]
+        bad = fail if bad is None else (bad | fail)
         if i == n_pass - 1:
             bad = bad | (L.diagonal(dim1=-2, dim2=-1).amin(dim=-1) < _BREAKDOWN_LMIN)
         Q = torch.where(ok, Q @ L_inv.mT, Q)
