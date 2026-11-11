@@ -16,7 +16,8 @@
   - **Behaviour change:** every option except `"ignore"` costs one host synchronization per call in eager mode
     (measured +0-7% on NVIDIA GPUs, up to +90% for a single small matrix on Apple GPUs). The synchronization also means
     the default cannot be captured in a raw CUDA graph; use `on_breakdown="ignore"` or `torch.compile` there.
-  - Under `torch.compile` the check is skipped, so compiled graphs are unchanged.
+  - Under `torch.compile` and inside `torch.func` transforms (`vmap`, `grad`) the check is skipped, so compiled graphs
+    are unchanged and vmap works.
   - Inputs inside the range give bit-identical results to 0.4 (checked for Q and R, all methods).
   - Exactly rank-deficient inputs (zero columns) now get an orthonormal Q with the default.
   - Not caught: gradual loss of orthogonality of `"rcqr"` above cond ~1e8, and custom `passes` (the threshold is
@@ -36,7 +37,12 @@
 - `benchmarks/device_sweep.py`, `benchmarks/bench_overhead.py`: the scripts behind the README tables.
 - `lean/`: Lean 4 proofs of the exact-algebra results (shifted-pass spectrum, positive-definiteness criterion, the
   a-posteriori orthogonality bound of Fukaya et al. 2020 eq. 3.33); the floating-point layer is not formalized.
-- CI: tests on Python 3.9-3.13 with torch 2.1 to latest (Linux), plus macOS and Windows.
+- **TF32:** when TF32 is active on an Ampere-or-newer NVIDIA GPU, the Gram and forming products use the 3xTF32 scheme
+  (exact split into a TF32 part and a remainder; two or three TF32 GEMMs), restoring FP32-class accuracy without changing
+  global settings. Before, TF32 degraded orthogonality to ~1e-3 and the breakdown check could not catch it.
+- CI: Python 3.9-3.15, torch 2.1 to latest and nightly (Linux x86 and ARM), numpy 1 and 2, macOS, Windows.
+- Tests for execution modes: deterministic algorithms, inference_mode, vmap, double backward, default dtype float64,
+  edge shapes, non-contiguous inputs, CUDA graph capture (with `on_breakdown="ignore"`), second GPU.
 - README: measured FP32 breakdown points and device table, cost of the check, why the Fukaya et al. guarantee does
   not cover FP32 at these sizes, a caution on power-iterated sketches.
 
