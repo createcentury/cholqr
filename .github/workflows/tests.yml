@@ -9,8 +9,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, python: "3.9",  torch: "2.1.*", numpy: "numpy<2"}
-          - {os: ubuntu-latest, python: "3.10", torch: "2.3.*", numpy: "numpy<2"}
+          - {os: ubuntu-24.04, python: "3.9",  torch: "2.1.*", numpy: "numpy<2"}
+          - {os: ubuntu-24.04, python: "3.10", torch: "2.3.*", numpy: "numpy<2"}
           - {os: ubuntu-latest, python: "3.11", torch: "2.5.*", numpy: "numpy"}
           - {os: ubuntu-latest, python: "3.12", torch: "2.7.*", numpy: "numpy"}
           - {os: ubuntu-latest, python: "3.13", torch: "",      numpy: "numpy"}
