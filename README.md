@@ -182,6 +182,23 @@ python -m cholqr.diagnose            # cuda, then mps, then cpu;  --full adds 40
 It reports the Gram-product error class (FP32 or TF32), the condition numbers where `scqr3` / `cqr2` break, whether
 the default stays orthogonal, whether `robust=True` is available, and a timing against `torch.linalg.qr`.
 
+**Cost of the breakdown check** (`on_breakdown="fallback"`, the default, vs `"ignore"`; well-conditioned inputs, so no
+fallback runs; median of 50 calls; torch 2.8, CUDA 12.8; `benchmarks/bench_overhead.py`):
+
+| GPU | 1 x 1024 x 64 | 1 x 4096 x 276 | 16 x 2048 x 128 | 40 x 768 x 210 | 8 x 4096 x 276 | speed-up vs `torch.linalg.qr`, 40 x 768 x 210 |
+|---|---|---|---|---|---|---|
+| H100 80GB HBM3 | +5% | +4% | +3% | +1% | +1% | 14.4x |
+| A100-SXM4-80GB | +3% | +2% | +2% | +1% | +0% | 12.4x |
+| A40 | +3% | +2% | +2% | +1% | +0% | 10.5x |
+| RTX 4090 | +2% | +2% | +2% | +1% | +1% | 12.0x |
+| RTX 5090 | +7% | +2% | +3% | +1% | +0% | 16.9x |
+| RTX PRO 6000 Blackwell | +7% | +2% | +2% | +1% | +0% | 18.5x |
+| L4 | +3% | +2% | +1% | +0% | +0% | 6.1x |
+
+The check costs one host synchronization (0.02-0.04 ms on these GPUs). On Apple GPUs (MPS) a synchronization is more
+expensive: up to +90% for a single small matrix, about 0% for large batches. For a single small matrix
+`torch.linalg.qr` is faster than any CholeskyQR, which is what `method="auto"` uses.
+
 <!-- DEVICE TABLE: filled from the device sweep (benchmarks/device_sweep.py) -->
 | device | Gram error ε/u (FP32) | first breakdown, scqr3 / cqr2 (1024 x 64, geometric) | checks |
 |---|---|---|---|
