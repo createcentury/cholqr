@@ -288,7 +288,7 @@ run with orthogonality > 1e-4 (false alarms in parentheses).
 | NVIDIA RTX 4090 (2.8) | 4.1 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 58 / 58 (4 of 818) |
 | NVIDIA RTX 5090 (2.8) | 5.1 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 815) |
 | NVIDIA RTX PRO 6000 Blackwell (2.8) | 5.2 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 813) |
-| NVIDIA L4 (2.8; 1352 of 1632 runs) | 5.5 / 5.4 | 1e7 / 3e4 | 1352 / 1352 | 42 / 42 (2 of 680) |
+| NVIDIA L4 (2.8) | 5.5 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 57 / 57 (3 of 816) |
 | NVIDIA T4 (2.14, Colab) | 7.8 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 56 / 56 (3 of 817) |
 
 The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
