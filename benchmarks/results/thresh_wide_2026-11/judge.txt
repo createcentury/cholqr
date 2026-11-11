@@ -1,0 +1,36 @@
+runs: 2448; threshold 0.1953
+S0 sanity (not a prediction): mirror vs cholqr._cqr bit-identical in 1224/1224 lib runs; breakdown flag agrees in 1224/1224
+
+l = 512 (m = 4096): runs 1224, non-broken 623, degraded 69, good 546, in between 8
+  C1 caught 68/69 (FN 1) -> FAIL
+  C2 false alarms 0/546 -> PASS
+    FN: TW-4096-512-linear-11-3 cqr2 pw8 orth 1.09e-04 Lmin_last 0.197
+  c = orth * Lmin_last^2 / u over 77 runs (Lmin_last < 0.6, orth > 1e-6): median 82.0, p90 128.9, max 217.2
+  (descriptive) largest Lmin_last among degraded runs: 0.197
+    scqr3 lib: degraded 3 (FN 0), good 189 (FP 0)
+    scqr3 pw8: degraded 3 (FN 0), good 194 (FP 0)
+    cqr2  lib: degraded 31 (FN 0), good 81 (FP 0)
+    cqr2  pw8: degraded 32 (FN 1), good 82 (FP 0)
+
+l = 1024 (m = 8192): runs 1224, non-broken 604, degraded 84, good 495, in between 25
+  C1 caught 78/84 (FN 6) -> FAIL
+  C2 false alarms 0/495 -> PASS
+    FN: TW-8192-1024-linear-9-1 cqr2 lib orth 1.38e-04 Lmin_last 0.432
+    FN: TW-8192-1024-linear-9-1 cqr2 pw8 orth 1.33e-04 Lmin_last 0.430
+    FN: TW-8192-1024-linear-15-1 scqr3 lib orth 1.65e-04 Lmin_last 0.215
+    FN: TW-8192-1024-linear-17-2 scqr3 lib orth 1.76e-04 Lmin_last 0.199
+    FN: TW-8192-1024-linear-17-3 scqr3 pw8 orth 1.05e-04 Lmin_last 0.227
+    FN: TW-8192-1024-linear-18-3 scqr3 pw8 orth 1.12e-04 Lmin_last 0.215
+  c = orth * Lmin_last^2 / u over 110 runs (Lmin_last < 0.6, orth > 1e-6): median 134.8, p90 345.3, max 3553.9
+  (descriptive) largest Lmin_last among degraded runs: 0.432
+    scqr3 lib: degraded 9 (FN 2), good 168 (FP 0)
+    scqr3 pw8: degraded 9 (FN 2), good 169 (FP 0)
+    cqr2  lib: degraded 33 (FN 1), good 78 (FP 0)
+    cqr2  pw8: degraded 33 (FN 1), good 80 (FP 0)
+
+Registered predictions:
+  W1 l=512: C1 PASS and FN in [0, 2]: C1 FAIL, FN 1 -> FAIL
+  W2 l=1024: C1 FAIL with FN in [1, 15]: C1 FAIL, FN 6 -> PASS
+  W3 C2 PASS at both l, FP <= 3 each: l=512 PASS (0), l=1024 PASS (0) -> PASS
+  W4 p90 of c: l=1024 (345.3) >= 64 and > l=512 (128.9) -> PASS
+  W5 every FN has Lmin_last in [0.195, 0.6): 7 FN -> PASS
