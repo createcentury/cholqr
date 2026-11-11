@@ -23,7 +23,8 @@ diagonal below 0.195: a pass on X leaves orthogonality ~ c·u/Lmin² with c ≈ 
 a 2x margin on c) reuses the small r x r Cholesky factors the passes already compute, so it adds no Gram product and no extra pass over
 the data. It does cost one host synchronization per call. Choose the behaviour with `on_breakdown`:
 `"fallback"` (default), `"warn"`, `"raise"` or `"ignore"` (the 0.4 behaviour, no synchronization). Inside
-`torch.compile` the check is skipped.
+`torch.compile` the check is skipped. This detector is **empirical** (calibrated and validated, not proved; under
+TF32 it misses most degraded runs). For a guarantee use `verify=True` (below).
 
 | method | passes | reliable range in FP32 (tested) | use when |
 |---|---|---|---|
@@ -162,6 +163,56 @@ Q = cholesky_qr(Y)               # fast default; beyond cond(Y) ~ 1e6 the affect
 Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 at full speed (no fallback needed)
 ```
 
+## Certified orthogonality (`verify=True`)
+
+```python
+Q = cholesky_qr(Y, verify=True)            # every returned matrix satisfies ||Q^T Q - I||_F <= 1e-4 (proved)
+Q = cholesky_qr(Y, verify=True, tol=1e-6)
+b = cholqr.orthogonality_bound(Q)           # the bound itself, per matrix (float64)
+```
+
+**What is guaranteed.** With `verify=True`, a returned Q (each matrix of a batch) satisfies ‖QᵀQ − I‖_F ≤ `tol` for
+the *exact* values of the returned tensor, not for a computed estimate. The check computes the Gram matrix Ĝ of the
+returned Q in FP64 and accepts it iff `fl(α·ê + β·tr̂) ≤ tol`, where ê is the computed ‖Ĝ − I‖_F,
+α = 1 + (r² + 4)u + O(u²), β = m·u·(1 + O((m + r)u)), u = 2^-53 (constants computed in exact rational arithmetic
+and rounded up). In words: the computed error plus a slack of about m·u·tr(Ĝ) ≈ m·r·u, e.g. 1.3e-10 for 4096 x 276.
+The proof uses that every value cholqr returns is an FP32 value (float16/bfloat16/float8 values are too), so it is exact
+in FP64, products of two entries are exact, and nothing underflows; the Gram rounding is then bounded by
+γ_m·Σ|q_ki||q_kj| for *any* summation order, blocking or split-K, with or without FMA; Cauchy–Schwarz and the computed
+diagonal bound the true column norms; the rounding of the norm, the trace and the final multiply-add are included.
+The algebraic part is proved in Lean ([`lean/CholQR/Verify.lean`](lean/CholQR/Verify.lean)); the floating-point
+facts are proved on paper. It does not matter how Q was computed (TF32, a broken-down factorization, another device).
+
+**Assumptions.** The FP64 kernels that run the check follow IEEE 754 binary64 with round-to-nearest (standard model;
+correctly rounded sqrt): CPU BLAS for CPU and MPS tensors, cuBLAS DGEMM for CUDA tensors. Not covered: Strassen-type
+GEMMs, FP64 emulated on lower-precision units, x87 extended-precision accumulation. Flush-to-zero / denormal modes do
+not matter (no intermediate is subnormal). float64 tensors passed to `orthogonality_bound` must hold FP32 values
+(otherwise the bound is `inf`); non-finite matrices are never certified.
+
+**What happens when a matrix is not certified** (`on_breakdown`): `"fallback"` (default) recomputes only those matrices
+(scqr3 with an FP64 first pass where the device has FP64, then Householder QR, in FP64 where available, rounded through
+FP32), re-verifies, and raises `torch.linalg.LinAlgError` if one still fails, so a returned Q is always certified;
+`"warn"` warns and returns the uncertified result; `"raise"` raises; `"ignore"` is rejected (`ValueError`; use
+`orthogonality_bound`). With `verify=True` the certificate replaces the empirical flags (a matrix the detector flags
+but the certificate accepts is returned as is).
+
+| mode | `verify=True` |
+|---|---|
+| eager CPU / CUDA | check in FP64 on the tensor's device; one host synchronization |
+| eager MPS | Q is copied to the CPU (m·r·4 bytes per matrix) and checked there; fallback runs on MPS (Householder in FP32) |
+| `torch.compile`, `torch.export` | `RuntimeError` at call time (no data-dependent fallback inside a graph); compile with `verify=False` and call `orthogonality_bound(Q)` outside |
+| `torch.func.vmap` / `grad` | `RuntimeError` at call time; same workaround |
+| autograd | unchanged: the check runs under `no_grad` on a detached copy |
+| CUDA graphs | not capturable (host synchronization) |
+
+**Cost** (median, verify=True vs the default, fp32, no fallback triggered; `benchmarks/verify_eval.py --part v3`):
+COSTTABLE
+
+**What is not covered.** Orthogonality only: not the accuracy of the subspace range(Q) vs range(Y), nor of R
+(Y = QR). A residual certificate for ‖Y − QR‖ is future work. Q requested in float16/bfloat16/float8 can usually not be
+certified at 1e-4 (rounding Q alone moves the error by ~√r·ε of that format); use `out_dtype=torch.float32` or a larger
+`tol`. Why FP64: the same argument run in FP32 gives a slack of ~m·r·2^-24 ≈ 0.07 for 4096 x 276, far above 1e-4.
+
 ## What is proved, what is measured, and how to check your device
 
 - **Proved (exact arithmetic; Lean 4 proofs in [`lean/`](lean/)):** the spectrum of the shifted first pass
@@ -172,7 +223,10 @@ Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 
   spectra and sizes; that the bound holds with the measured rounding terms and no safety margin; that the breakdown
   check flags every run whose orthogonality exceeded 1e-4 in validation data it was not tuned on; how inputs in
   bfloat16 / float16 / float8 / float64 behave; and the behaviour on several devices (table below).
-- **Not covered:** the floating-point layer is not formalized; devices and settings not in the table; `torch.compile`
+- **Proved (floating point):** the `verify=True` certificate (section above): a returned Q satisfies
+  ‖QᵀQ − I‖_F ≤ tol under IEEE FP64 arithmetic in any summation order (algebraic part in Lean, rounding facts on paper).
+- **Not covered:** the floating-point layer of the CholeskyQR analysis is not formalized (the default detector is
+  empirical); devices and settings not in the table; `torch.compile`
   (the check is skipped there); gradual loss of orthogonality for `"rcqr"` and custom `passes`.
 
 Check your own device in a few seconds:
@@ -218,10 +272,12 @@ run with orthogonality > 1e-4 (false alarms in parentheses).
 | NVIDIA RTX 5090 (2.8) | 5.1 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 815) |
 | NVIDIA RTX PRO 6000 Blackwell (2.8) | 5.2 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 813) |
 | NVIDIA L4 (2.8; 1352 of 1632 runs) | 5.5 / 5.4 | 1e7 / 3e4 | 1352 / 1352 | 42 / 42 (2 of 680) |
+| NVIDIA T4 (2.14, Colab) | 7.8 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 56 / 56 (3 of 817) |
 
 The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
 `python -m cholqr` reports the same Gram-error class for a random well-conditioned matrix, so its numbers are smaller.
-Not measured yet: NVIDIA A100 (run incomplete), T4 (no capacity when we tried), and Google TPUs (torch_xla; untested,
+T4 (Turing) has no TF32, so `"high"` gives the same results as `"highest"` there (and no compensation is applied).
+Not measured yet: NVIDIA A100 (run incomplete) and Google TPUs (torch_xla; untested,
 not a target yet). Results from other hardware are welcome (`benchmarks/device_sweep.py`).
 
 ## Compatibility
@@ -232,11 +288,11 @@ not a target yet). Results from other hardware are welcome (`benchmarks/device_s
 | PyTorch | 2.1 to latest; nightly in CI (allowed to fail) | on torch < 2.4, compiling `method="rcqr"` fails or hangs in Inductor |
 | OS / CPU | Linux x86-64 and ARM64, macOS (Apple silicon), Windows | CI |
 | NumPy | 1.x and 2.x | only the PowerSGD DDP test uses it |
-| NVIDIA GPUs | Ampere, Ada, Hopper, Blackwell (A40, A100, L4, RTX 4090/5090, RTX PRO 6000, H100) | device table above |
+| NVIDIA GPUs | Turing, Ampere, Ada, Hopper, Blackwell (T4, A40, L4, RTX 4090/5090, RTX PRO 6000, H100) | device table above |
 | Apple GPUs | MPS | no FP64: the fallback uses Householder directly |
 | Input dtypes | float64, float32, bfloat16, float16, float8_e4m3fn | computation is FP32 (FP64 first pass with `robust=True`) |
 | Matmul precision | `highest` (full accuracy); `high` (TF32: partly compensated, see Accuracy) | `medium` may use bfloat16 products on some backends: not compensated |
-| Execution modes | eager, `torch.compile` (inductor), `torch.func.vmap`, `torch.export` (with `on_breakdown="ignore"`), autograd incl. double backward, `inference_mode`, deterministic algorithms (CPU), threads, spawned processes | the breakdown check is skipped under `torch.compile`, `vmap` and tracing |
+| Execution modes | eager, `torch.compile` (inductor), `torch.func.vmap`, `torch.export` (with `on_breakdown="ignore"`), autograd incl. double backward, `inference_mode`, deterministic algorithms (CPU), threads, spawned processes | the breakdown check is skipped under `torch.compile`, `vmap` and tracing; `verify=True` raises there |
 | Not yet verified | Turing/Volta GPUs (T4, V100), AMD ROCm, Intel XPU, TPU (PyTorch/XLA), FSDP/DTensor inputs, deterministic mode / CUDA graphs / second GPU on CUDA (tests exist, run only on GPU machines) | reports welcome |
 | Not supported | complex dtypes (raise `TypeError`), TorchScript | |
 
