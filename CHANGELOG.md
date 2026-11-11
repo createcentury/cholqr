@@ -25,6 +25,17 @@
 - **Fix:** `passes=0, return_r=True` raised `AttributeError`; R is now the identity.
 - `contrib.powersgd` passes `on_breakdown="ignore"` because it has its own orthogonality check (one host sync per
   call, as before).
+- **Fix:** a factorization whose Cholesky factor has a non-finite diagonal now counts as failed even if `cholesky_ex`
+  reports success (defensive; cheap r-element check).
+- **Fix:** the fallback merge works for every dtype (it failed for float8 inputs).
+- **Compatibility:** torch 2.1-2.3 work again (`torch.compiler.is_compiling` fallback; `dtype.is_complex` under Dynamo).
+  0.4.0 declared `torch>=2.1` but failed on torch < 2.3. On torch < 2.3, compiling `method="rcqr"` hits an Inductor bug.
+- `cholqr.diagnose()` / `python -m cholqr.diagnose`: measures, in about a second, the Gram error class (FP32 vs TF32), the
+  breakdown points, the default's orthogonality, robust availability and timing on the current device.
+- `benchmarks/device_sweep.py`: instrumented sweep that logs every rounding term per pass (used for the device tables).
+- `lean/`: Lean 4 proofs of the exact-algebra results (shifted-pass spectrum, positive-definiteness criterion, the
+  a-posteriori orthogonality bound); the floating-point layer is not formalized.
+- CI: tests on Python 3.9-3.13 with torch 2.1 to latest (Linux), plus macOS and Windows.
 - README: measured position of the FP32 cliff (QRBOUND sweep), why the Fukaya et al. guarantee does not cover FP32
   at these sizes, and a caution on power-iterated sketches.
 

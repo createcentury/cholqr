@@ -225,6 +225,10 @@ def test_rcqr_batched_and_degenerate():
     assert orth_err(cholesky_qr(small, method="rcqr")) < 5e-5
 
 
+_TORCH = tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+
+
+@pytest.mark.skipif(_TORCH < (2, 3), reason="torch < 2.3: Inductor fails to compile the rcqr sketch (torch bug)")
 def test_rcqr_compiles():
     torch._dynamo.reset()
     f = torch.compile(lambda Y: cholesky_qr(Y, method="rcqr"), fullgraph=True)
