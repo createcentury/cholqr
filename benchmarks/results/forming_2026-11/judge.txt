@@ -1,0 +1,28 @@
+runs: 624; library bit-identity of 'inv': 312/312
+
+eta/u per pass (successful passes): median / p90 / max
+  scqr3 1024x64 pass 1: inv:  1664.70   2763.90    4450.43 (n=78) | trsm:   181.09    266.97     278.32 (n=78)
+  scqr3 1024x64 pass 2: inv:    23.40   2593.68    9044.45 (n=53) | trsm:    32.69   2082.70   14307.29 (n=54)
+  scqr3 1024x64 pass 3: inv:     1.13      1.15       5.58 (n=53) | trsm:     3.50      3.92       7.46 (n=54)
+  scqr3 4096x276 pass 1: inv:  1503.98   2147.02    2374.64 (n=78) | trsm:   184.11    266.92     271.84 (n=78)
+  scqr3 4096x276 pass 2: inv:   149.45  13503.58  261561.56 (n=52) | trsm:   144.52   5471.14   14167.91 (n=49)
+  scqr3 4096x276 pass 3: inv:     1.15      1.88       4.24 (n=52) | trsm:     7.07      7.85   34277.71 (n=50)
+  cqr2  1024x64 pass 1: inv:  1383.51   5809.35   12219.06 (n=20) | trsm:   255.12    904.02    1695.68 (n=20)
+  cqr2  1024x64 pass 2: inv:     1.15      1.18       1.25 (n=20) | trsm:     3.79      3.96       4.02 (n=20)
+  cqr2  4096x276 pass 1: inv:  3999.83  33096.12   39530.55 (n=24) | trsm:   667.89   4840.27    5993.94 (n=24)
+  cqr2  4096x276 pass 2: inv:     1.17      1.77       2.09 (n=24) | trsm:     7.85      9.56       9.79 (n=24)
+
+F1 pass-1 paired ratio eta_inv/eta_trsm: median 6.85, p10 4.56, p90 15.15, max 22.57 (n=200) -> PASS (registered: median in [1, 10], max <= 100)
+F2 passes >= 2: median eta/u inv 1.17, trsm 7.65, ratio 0.15 -> FAIL (registered: both <= 5, ratio in [0.5, 2])
+F3 final orth ratio inv/trsm (both non-broken): median 0.95, p10 0.77, p90 1.31, min 0.547, max 5.39 (n=146); same breakdown status 308/312 -> PASS (registered: median in [0.5, 2], >= 95% same)
+F4 reference discrepancy <= 0.01 eta: 905/905 -> PASS; max ref_disc/u 4.49e-04
+F5 Theorem D(c) violations: 0/905 -> PASS
+
+(descriptive) eta terms 2 eta sqrt(1+d) + eta^2 as a fraction of bound_c, last pass: median / max
+  inv: 0.103 / 0.249 (n=149)
+  trsm: 0.318 / 0.691 (n=147)
+(descriptive) final ||Q^TQ - I||_2 / u, non-broken: median / max
+  scqr3 1024x64: inv 18.5 / 124 (n=53) | trsm 18.8 / 51.8 (n=54)
+  scqr3 4096x276: inv 6.4 / 58.7 (n=52) | trsm 6.9 / 20.8 (n=49)
+  cqr2  1024x64: inv 20.0 / 26.8 (n=20) | trsm 20.2 / 29.9 (n=20)
+  cqr2  4096x276: inv 20.2 / 34.6 (n=24) | trsm 17.4 / 24.3 (n=24)
