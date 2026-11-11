@@ -37,7 +37,10 @@ def test_fallback_on_ill_conditioned_batch():
 
 def test_patch_unpatch_and_ddp_hook_equivalence():
     pytest.importorskip("numpy")    # torch's PowerSGDState imports numpy
-    os.environ.setdefault("MASTER_ADDR", "127.0.0.1"); os.environ.setdefault("MASTER_PORT", "29561")
+    import socket
+    with socket.socket() as sk:                  # a free port, so parallel test runs on one host do not collide
+        sk.bind(("127.0.0.1", 0)); port = sk.getsockname()[1]
+    os.environ.setdefault("MASTER_ADDR", "127.0.0.1"); os.environ.setdefault("MASTER_PORT", str(port))
     if not dist.is_initialized():
         dist.init_process_group("gloo", rank=0, world_size=1)
     from torch.nn.parallel import DistributedDataParallel as DDP

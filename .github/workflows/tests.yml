@@ -37,7 +37,7 @@ jobs:
             if [ "${{ runner.os }}" = "Linux" ]; then IDX="--index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple"; else IDX=""; fi
             python -m pip install $IDX "torch${{ matrix.torch && format('=={0}', matrix.torch) || '' }}"
           fi
-          python -m pip install "${{ matrix.numpy }}" pytest
+          python -m pip install "${{ matrix.numpy }}" pytest setuptools
           python -m pip install -e . --no-deps
       - name: Test
         run: python -m pytest -q

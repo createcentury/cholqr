@@ -1,4 +1,5 @@
 import math
+import shutil
 import pytest
 import torch
 from cholqr import cholesky_qr
@@ -228,8 +229,10 @@ def test_rcqr_batched_and_degenerate():
 
 
 _TORCH = tuple(int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+_HAS_CXX = any(shutil.which(c) for c in ("g++", "clang++", "c++", "cl"))
 
 
+@pytest.mark.skipif(not _HAS_CXX, reason="Inductor needs a C++ compiler on CPU (none on PATH)")
 @pytest.mark.skipif(_TORCH < (2, 4), reason="torch < 2.4: Inductor fails (2.1) or hangs (2.3) compiling the rcqr sketch")
 def test_rcqr_compiles():
     torch._dynamo.reset()
@@ -265,6 +268,7 @@ def test_auto_half_precision_and_robust():
     assert orth_err(cholesky_qr(torch.randn(3, 400, 20), method="auto", robust=True)) < 5e-5
 
 
+@pytest.mark.skipif(not _HAS_CXX, reason="Inductor needs a C++ compiler on CPU (none on PATH)")
 def test_auto_compiles():
     torch._dynamo.reset()
     for shape in [(500, 20), (3, 500, 20)]:
