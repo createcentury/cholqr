@@ -9,4 +9,4 @@ built on CholeskyQR2 (Yamamoto, Nakatsukasa, Yanagisawa, Fukaya, ETNA 44, 2015).
 from .core import cholesky_qr, orthonormal_basis
 
 __all__ = ["cholesky_qr", "orthonormal_basis"]
-__version__ = "0.4.0"
+__version__ = "0.5.0"

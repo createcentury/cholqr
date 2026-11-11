@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+- **Breakdown detection and fallback.** Beyond its range (FP32 `scqr3`: cond(Y) ~ 1e6–1e7), CholeskyQR used to return
+  a non-orthonormal Q without any error. In every case we measured, a Cholesky factorization in a later pass failed;
+  0.4 skipped that pass silently. Matrices are now flagged when any pass's `cholesky_ex` fails, or when the last
+  pass's Cholesky factor has a diagonal entry below 1e-2 (numerically rank-deficient input, e.g. zero columns). The
+  flags reuse the r x r factors, so there is no extra Gram product.
+  - New argument `on_breakdown`: `"fallback"` (default) recomputes only the flagged matrices, first with an FP64
+    first pass and then with Householder QR; `"warn"`; `"raise"` (`torch.linalg.LinAlgError`); `"ignore"` (0.4
+    behaviour).
+  - Every option except `"ignore"` costs one host synchronization per call in eager mode. Under `torch.compile` the
+    check is skipped, so compiled graphs are unchanged.
+  - Inputs inside the range give bit-identical results to 0.4.
+  - Exactly rank-deficient inputs (zero columns) now get an orthonormal Q with the default.
+- **Fix:** FP32 inputs with entries above ~1e19 overflowed the first column-norm computation and returned Q = 0.
+  The norm is now taken after dividing by the column maximum. This affects `scqr3`/`cqr2` and the pre-scaling of `rcqr`.
+- README: measured position of the FP32 cliff (QRBOUND sweep), why the Fukaya et al. guarantee does not cover FP32
+  at these sizes, and a caution on power-iterated sketches.
+
 ## 0.4.0 (2026-11-08)
 - **Faster Gram products.** For m >= 2048 rows, Q^T Q is now computed with a manual split-K: the m rows are chunked
   into blocks of 256, then a batched GEMM, then a sum. Smaller m keeps the plain GEMM, where chunking only adds

@@ -7,6 +7,8 @@ import torch
 __all__ = ["cholesky_qr", "orthonormal_basis"]
 
 _METHODS = ("scqr3", "cqr2", "rcqr", "auto")
+_ON_BREAKDOWN = ("fallback", "warn", "raise", "ignore")
+_BREAKDOWN_LMIN = 1e-2   # last-pass Cholesky diagonal below this = the last pass's input was numerically rank deficient
 _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A100 measurements, see README)
 
 
@@ -35,7 +37,7 @@ def _gram(Q: torch.Tensor) -> torch.Tensor:
 
 def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, return_r: bool = False,
                 out_dtype=None, shift: float = 1e-6, passes: Optional[int] = None, oversample: float = 1.25,
-                generator: Optional[torch.Generator] = None):
+                generator: Optional[torch.Generator] = None, on_breakdown: str = "fallback"):
     """Thin QR of a (batch of) tall-skinny matrix Y of shape (..., m, r), r <= m, via Cholesky QR.
 
     Methods
@@ -61,6 +63,12 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     ``torch.where`` fallback skips a failed pass without host synchronization, so the function compiles into a single
     graph.
 
+    Breakdown detection (new in 0.5): a matrix is flagged when a Cholesky factorization fails in any pass (the pass was
+    skipped, so the result is not orthonormal) or when the last pass's Cholesky factor has a diagonal entry below
+    ``1e-2`` (the input to the last pass was numerically rank deficient, e.g. a zero column). Both tests reuse the r x r
+    factors already computed; they add no Gram product. This is how FP32 ``scqr3`` fails beyond cond(Y) ~ 1e6-1e7:
+    without the check the result silently loses orthogonality (||Q^T Q - I||_F ~ 20-90).
+
     Args:
         Y: real tensor of shape (..., m, r) with r <= m.
         method: ``"scqr3"``, ``"cqr2"``, ``"rcqr"`` or ``"auto"``.
@@ -72,6 +80,13 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             sketch step, default 1).
         oversample: (rcqr only) sketch size factor.
         generator: (rcqr only) torch.Generator for the sketch (graph-breaks under torch.compile).
+        on_breakdown: what to do with flagged matrices. ``"fallback"`` (default): recompute only the flagged matrices,
+            first with ``scqr3`` and an FP64 first pass (``robust=True``; skipped on devices without FP64), then, if
+            still flagged, with Householder ``torch.linalg.qr``. ``"warn"``: warn and return the unrepaired result.
+            ``"raise"``: raise ``torch.linalg.LinAlgError``. ``"ignore"``: return the result as computed (the 0.4
+            behaviour). Every option except ``"ignore"`` costs one host synchronization (reading a flag) per call.
+            While compiling (``torch.compile``) the check is skipped, as with ``"ignore"``, so the function still
+            compiles into a single graph; check orthogonality yourself there or use ``robust=True``.
     Returns:
         Q of shape (..., m, r), or (Q, R) with R of shape (..., r, r) if ``return_r``.
     """
@@ -83,6 +98,8 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         raise ValueError(f"method must be one of {_METHODS}, got {method!r}")
     if robust and method not in ("scqr3", "auto"):
         raise ValueError("robust=True is only available for method='scqr3' or 'auto'")
+    if on_breakdown not in _ON_BREAKDOWN:
+        raise ValueError(f"on_breakdown must be one of {_ON_BREAKDOWN}, got {on_breakdown!r}")
     # is_compiling() must be evaluated first: older Dynamo (e.g. torch 2.7) cannot trace
     # get_float32_matmul_precision() (returns a str) and fails under fullgraph=True.
     if not torch.compiler.is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() != "highest":
@@ -98,13 +115,61 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         if batch <= 1 and r <= _AUTO_QR_MAX_R:
             return _householder(Y, return_r, out_dtype)
         method = "scqr3"
+    Q, R, bad = _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator)
+    if on_breakdown != "ignore" and not torch.compiler.is_compiling() and bool(bad.any()):
+        n_bad, n_all = int(bad.sum()), bad.numel()
+        if on_breakdown == "raise":
+            raise torch.linalg.LinAlgError(
+                f"cholqr: CholeskyQR broke down for {n_bad} of {n_all} matrices (input too ill-conditioned or rank "
+                f"deficient for method={method!r}, robust={robust}); use robust=True or on_breakdown='fallback'")
+        if on_breakdown == "warn":
+            warnings.warn(f"cholqr: CholeskyQR broke down for {n_bad} of {n_all} matrices; the result is not "
+                          "orthonormal for them (use robust=True or on_breakdown='fallback')", RuntimeWarning, stacklevel=2)
+        else:
+            Q, R = _repair(Y, Q, R, bad, method, robust, return_r, out_dtype, shift, passes, oversample, generator)
+    return (Q, R) if return_r else Q
+
+
+def _colnorm(Q):
+    """Column norms (..., 1, r) without overflow: FP32 entries above ~1e19 would make Q.norm() return inf."""
+    if Q.dtype != torch.float32:
+        return Q.norm(dim=-2, keepdim=True)
+    a = Q.abs().amax(dim=-2, keepdim=True).clamp_min(1e-30)
+    return a * (Q / a).norm(dim=-2, keepdim=True)
+
+
+def _repair(Y, Q, R, bad, method, robust, return_r, out_dtype, shift, passes, oversample, generator):
+    """Recompute the flagged matrices: scqr3 with an FP64 first pass, then Householder for any still flagged."""
+    m, r = Y.shape[-2], Y.shape[-1]
+    shape = Q.shape
+    idx = bad.reshape(-1).nonzero().squeeze(1)
+    Ys = Y.reshape(-1, m, r)[idx]
+    can_fp64 = Ys.device.type != "mps"
+    if can_fp64 and not (method == "scqr3" and robust):
+        Qs, Rs, bad_s = _cqr(Ys, "scqr3", True, return_r, out_dtype, shift, None, oversample, generator)
+        if bool(bad_s.any()):
+            j = bad_s.nonzero().squeeze(1)
+            Qh, Rh = _householder(Ys[j], True, out_dtype)
+            Qs = Qs.index_copy(0, j, Qh)
+            Rs = Rs.index_copy(0, j, Rh) if return_r else None
+    else:
+        Qs, Rs = _householder(Ys, True, out_dtype)
+    Q = Q.reshape(-1, m, r).index_copy(0, idx, Qs.to(Q.dtype)).reshape(shape)
+    if return_r:
+        R = R.reshape(-1, r, r).index_copy(0, idx, Rs.to(R.dtype)).reshape(R.shape)
+    return Q, R
+
+
+def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator):
+    """Core passes. Returns (Q, R or None, bad) with bad of shape Y.shape[:-2] (breakdown flags)."""
+    m, r = Y.shape[-2], Y.shape[-1]
     n_pass = passes if passes is not None else {"scqr3": 3, "cqr2": 2, "rcqr": 1}[method]
     u = torch.finfo(torch.float32).eps
     Q = Y.double() if robust else Y.float()
     R = None
     if method == "rcqr":
         k = min(m, max(r, math.ceil(oversample * r / 128) * 128))
-        d0 = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+        d0 = _colnorm(Q).clamp_min(1e-30)
         Q = Q / d0
         S = torch.randn(k, m, device=Q.device, dtype=Q.dtype, generator=generator) / math.sqrt(k)
         R0 = torch.linalg.qr(S @ Q, mode="r")[1]                            # (..., r, r)
@@ -115,13 +180,14 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         Q = torch.linalg.solve_triangular(R0, Q, upper=True, left=False)
         if return_r:
             R = R0 @ torch.diag_embed(d0.squeeze(-2))
+    bad = None
     eye = torch.eye(r, device=Q.device, dtype=Q.dtype)                    # built once (torch.eye is costly to launch)
     for i in range(n_pass):
         if robust and i == 1:
             Q = Q.float()
             R = R.float() if R is not None else None
             eye = eye.float()
-        d = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)                 # (..., 1, r) column norms
+        d = (_colnorm(Q) if i == 0 else Q.norm(dim=-2, keepdim=True)).clamp_min(1e-30)   # (..., 1, r) column norms
         Q = Q / d
         G = _gram(Q)
         # columns have unit norm, so tr(G) = r (zero columns only make it smaller, i.e. the shift is conservative)
@@ -132,6 +198,9 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         L, info = torch.linalg.cholesky_ex(G + (s + 1e-30) * eye)
         L_inv = torch.linalg.solve_triangular(L, eye.expand_as(L), upper=False)
         ok = (info == 0)[..., None, None]
+        bad = (info != 0) if bad is None else (bad | (info != 0))
+        if i == n_pass - 1:
+            bad = bad | (L.diagonal(dim1=-2, dim2=-1).amin(dim=-1) < _BREAKDOWN_LMIN)
         Q = torch.where(ok, Q @ L_inv.mT, Q)
         if return_r:
             # Q_before = Q_scaled * d  and  Q_scaled = Q_after @ L^T (if the pass succeeded)
@@ -140,9 +209,9 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             R = F if R is None else F @ R
     dt = Y.dtype if out_dtype is None else out_dtype
     Q = Q.float().to(dt)
-    if not return_r:
-        return Q
-    return Q, R.float().to(dt)
+    if bad is None:                                                       # passes=0
+        bad = torch.zeros(Y.shape[:-2], dtype=torch.bool, device=Y.device)
+    return Q, (R.float().to(dt) if return_r else None), bad
 
 
 def _householder(Y, return_r, out_dtype):

@@ -13,8 +13,16 @@ Q = cholesky_qr(Y)                                 # shifted CholeskyQR3 (defaul
 Q = cholesky_qr(Y, method="cqr2")                  # CholeskyQR2: ~1/3 cheaper, only for cond(Y) <~ 4e3
 Q = cholesky_qr(Y, robust=True)                    # FP64 first pass: cond(Y) up to >= 1e8
 Q, R = cholesky_qr(Y, return_r=True)               # also R (upper triangular), Y = Q R
-fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synchronization
+fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synchronization (no breakdown check)
 ```
+
+**Breakdown detection and fallback (0.5).** CholeskyQR breaks down when the input is too ill-conditioned for the
+chosen method. Before 0.5 the result then silently lost orthogonality. In eager mode, `cholqr` now detects this and
+recomputes only the affected matrices: first with an FP64 first pass, then with Householder QR. The check reuses
+the small r x r Cholesky factors the passes already compute, so it adds no Gram product and no extra pass over
+the data. It does cost one host synchronization per call. Choose the behaviour with `on_breakdown`:
+`"fallback"` (default), `"warn"`, `"raise"` or `"ignore"` (the 0.4 behaviour, no synchronization). Inside
+`torch.compile` the check is skipped.
 
 | method | passes | reliable range in FP32 (tested) | use when |
 |---|---|---|---|
@@ -24,7 +32,9 @@ fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synch
 | `"auto"` | — | any | **recommended when shapes vary**: Householder (`torch.linalg.qr`) for a single matrix with r ≤ 64, otherwise `"scqr3"` |
 | `"rcqr"` | sketch + 1 | cond(Y) up to ≥ 1e8 (orth ≈ 7e-6) | single large matrices; **slow when batched** (its preconditioner is a batched Householder QR) |
 
-`"cqr2"` breaks down abruptly beyond its range: orthogonality is lost, and no error is raised. Use it only when you know the conditioning.
+Beyond its range, a method breaks down abruptly. Since 0.5 this is detected and repaired in eager mode (see above),
+but every repaired call pays for a second factorization. Pick the method for the conditioning you expect. Under
+`torch.compile` there is no check, so use `robust=True` there if the conditioning is unknown.
 
 **Example (randomized low-rank Muon on nanoGPT):** the measured cond(Y) is at most 70 without power iteration (h=0), so `"cqr2"` is safe there. With one power iteration (h=1) it reaches 4.5×10⁴, which needs `"scqr3"`.
 
@@ -76,18 +86,35 @@ Shifted CholeskyQR3 (Fukaya et al., 2020) with three implementation choices:
 1. **Split-K Gram products (v0.4).** For m >= 2048, the Gram product Q^T Q is computed as a batched GEMM over
    256-row chunks plus a sum. cuBLAS otherwise runs this small-output, long-reduction GEMM almost serially (A100:
    1.13 ms -> 0.08 ms for 4 x 6144 x 8 fp32). Summing shorter partial products also improves fp32 accuracy.
-1. **Column scaling before every Gram product.** The shift is scale invariant, and unnormalized inputs do not overflow FP32.
+1. **Column scaling before every Gram product.** The shift is scale invariant. The first column norm is computed after dividing by the column maximum, so entries up to the FP32 maximum do not overflow (fixed in 0.5: before, entries above ~1e19 gave a zero Q).
 2. **Explicit r x r triangular inverse applied as one batched GEMM.** This replaces a slow triangular solve over m rows.
-3. **`cholesky_ex` with a per-matrix `torch.where` fallback.** There is no host synchronization, and the routine compiles with zero graph breaks.
+3. **`cholesky_ex` with a per-matrix `torch.where` fallback.** The routine compiles with zero graph breaks. The
+   `info` flags of these factorizations, plus the smallest diagonal entry of the last pass's factor, are the breakdown
+   test of 0.5. Reading them is the only host synchronization, and it happens in eager mode only.
 
 ## Accuracy and range of validity
 
-| input condition number | default (FP32) | `robust=True` (FP64 first pass) |
-|---|---|---|
-| up to 1e6 | ‖QᵀQ − I‖_F ≈ 1e-5 | ‖QᵀQ − I‖_F ≈ 1e-5 |
-| 5e6 – 1e8 | **breaks down** (orthogonality lost) | ‖QᵀQ − I‖_F ≈ 1e-5, subspace error ≈ 2e-6 |
+| input condition number | FP32 `scqr3` without check (`on_breakdown="ignore"`, = 0.4) | default (0.5, eager) | `robust=True` (FP64 first pass) |
+|---|---|---|---|
+| up to 1e6 | ‖QᵀQ − I‖_F ≈ 1e-5 | identical (no fallback triggered) | ‖QᵀQ − I‖_F ≈ 1e-5 |
+| 5e6 – 1e8 | **breaks down** (‖QᵀQ − I‖_F ≈ 20–90) | ‖QᵀQ − I‖_F ≈ 1e-5 (repaired) | ‖QᵀQ − I‖_F ≈ 1e-5, subspace error ≈ 2e-6 |
 
 These numbers were tested on 3072 x 210 inputs with geometric and power-law spectra (`tests/`).
+
+Where the cliff is (CPU, FP32 input, 276 columns, geometric spectrum, one draw per point; `on_breakdown="ignore"`):
+for 1024 rows it lies between cond(Y) 1e6 and 3e6, and for 4096 rows between 3e6 and 1e7. Orthogonality jumps from
+≈ 1e-5 to ≈ 25 within that half-decade. In every broken case we measured, a Cholesky factorization in pass 2 or 3
+failed (`info > 0`), and the 0.5 check catches exactly this. With the default fallback, orthogonality stays at
+≈ 2e-6–8e-6 up to cond(Y) = 1e10. The subspace error then grows like ≈ (3–7)·1e-10 · cond(Y) until it saturates, because
+rounding Y to FP32 already moves its range by that much; no QR can undo that.
+
+- **Theory vs. practice.** The guarantee of Fukaya et al. (2020, Thm. 4.1) needs m·n·u ≤ 1/64 and
+  cond(Y) ≤ u⁻¹ / (96 (mn + n(n+1))). In FP32 (u = 2⁻²⁴), neither condition holds already at 4096 x 276: the second
+  bound is below 1. So the FP32 range above is empirical, not a theorem. The breakdown check is what makes the
+  default safe outside that range.
+- **Power iteration** raises the condition number of a sketch roughly to the power 2h+1 for h steps. This is a
+  heuristic: it can be badly off in both directions for individual matrices. Sketches that are harmless at h = 0 can
+  therefore cross the cliff at h = 1. Use `robust=True` or keep the default check, and don't predict cond(Y) from h = 0.
 
 - The default first-pass shift `1e-6 * tr(G)` is a heuristic. The a-priori shift of Fukaya et al. is impractically large in FP32 for large m·r.
 - `robust=True` costs one FP64 Gram product. That is cheap on data-center GPUs (A100/H100) and slow on consumer GPUs.
@@ -96,7 +123,11 @@ These numbers were tested on 3072 x 210 inputs with geometric and power-law spec
   - No fallback was triggered.
   - The final low-rank update differs from an FP64 Householder reference by at most 7.6×10⁻⁵ (relative).
   - Sketches computed in bf16 are typically well inside the default range, because bf16 rounding caps their effective condition number.
-- Exactly rank-deficient or zero inputs return finite outputs (not an orthonormal basis of a larger space).
+- Exactly rank-deficient or zero inputs (including zero columns) are flagged as breakdowns. With the default they
+  are recomputed by Householder QR, so Q has orthonormal columns and Y = Q R still holds (R then has zero diagonal
+  entries). With `on_breakdown="ignore"` they return finite outputs that are not orthonormal (0.4 behaviour).
+- **`"rcqr"` above cond(Y) ~ 1e8** does not break down, but with its single CholeskyQR pass, orthogonality degrades
+  gradually (≈ 3e-4 at 1e9). The check does not flag that.
 - **TF32:** if TF32 matmul is enabled (`torch.set_float32_matmul_precision("high")`, common in training scripts on Ampere and newer GPUs), the Gram products lose precision.
   - Measured on an A100-SXM4-80GB (torch 2.7.1, 3072 x 210, ‖QᵀQ − I‖_F):
 
@@ -116,8 +147,8 @@ These numbers were tested on 3072 x 210 inputs with geometric and power-law spec
 - Status: **experimental (0.x)**. The API may change. Issues and benchmarks on other GPUs are welcome.
 
 ```python
-Q = cholesky_qr(Y)               # fast default, cond(Y) <~ 1e6
-Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8
+Q = cholesky_qr(Y)               # fast default; beyond cond(Y) ~ 1e6 the affected matrices are recomputed
+Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 at full speed (no fallback needed)
 ```
 
 ## `method="auto"`

@@ -44,9 +44,66 @@ def test_robust_up_to_1e8(kind, kappa):
 
 
 def test_default_breaks_down_beyond_range():
-    # documents the limitation: plain FP32 loses orthogonality for cond ~ 1e7
+    # documents the limitation: plain FP32 loses orthogonality for cond ~ 1e7 (visible with on_breakdown="ignore")
     Y = make_spectrum(3072, 210, 1e7, "geometric")
-    assert orth_err(cholesky_qr(Y)) > 1.0
+    assert orth_err(cholesky_qr(Y, on_breakdown="ignore")) > 1.0
+
+
+@pytest.mark.parametrize("method", ["scqr3", "cqr2", "rcqr"])
+@pytest.mark.parametrize("kappa", [1e7, 1e9])
+def test_breakdown_is_repaired_by_default(method, kappa):
+    Y = make_spectrum(3072, 210, kappa, "geometric")
+    Q = cholesky_qr(Y, method=method)
+    # rcqr does not break down here; with a single CholeskyQR pass it only loses some orthogonality (3e-4 at 1e9)
+    assert orth_err(Q) < (1e-3 if method == "rcqr" else 5e-5)
+    assert subspace_err(Q, Y) < 1e-2 * max(1.0, kappa / 1e5)
+
+
+def test_breakdown_warn_and_raise():
+    Y = make_spectrum(3072, 210, 1e8, "geometric")
+    with pytest.warns(RuntimeWarning, match="broke down for 1 of 1"):
+        Q = cholesky_qr(Y, on_breakdown="warn")
+    assert orth_err(Q) > 1.0
+    with pytest.raises(torch.linalg.LinAlgError):
+        cholesky_qr(Y, on_breakdown="raise")
+    with pytest.raises(ValueError):
+        cholesky_qr(Y, on_breakdown="nope")
+
+
+def test_no_false_alarm_in_range():
+    Y = torch.stack([make_spectrum(2048, 128, k, "geometric", seed=i) for i, k in enumerate([1e1, 1e3, 1e5, 1e6])])
+    for method in ("scqr3", "rcqr"):
+        cholesky_qr(Y, method=method, on_breakdown="raise")
+    cholesky_qr(Y, robust=True, on_breakdown="raise")
+
+
+def test_fallback_repairs_only_flagged_batch_members():
+    Y = torch.stack([make_spectrum(2048, 128, k, "geometric", seed=i) for i, k in enumerate([1e3, 1e8, 1e2, 1e9])])
+    Q_ign = cholesky_qr(Y, on_breakdown="ignore")
+    Q, R = cholesky_qr(Y, return_r=True)
+    assert orth_err(Q) < 5e-5
+    assert torch.equal(Q[0], Q_ign[0]) and torch.equal(Q[2], Q_ign[2])   # untouched
+    rel = ((Q.double() @ R.double() - Y.double()).norm(dim=(-2, -1)) / Y.double().norm(dim=(-2, -1))).max()
+    assert rel < 1e-5
+
+
+@pytest.mark.parametrize("method", ["scqr3", "cqr2", "rcqr"])
+def test_rank_deficient_inputs_get_orthonormal_q(method):
+    g = torch.Generator().manual_seed(0)
+    zero_col = torch.cat([torch.randn(256, 15, generator=g), torch.zeros(256, 1)], 1)
+    low_rank = torch.randn(256, 8, generator=g) @ torch.randn(8, 16, generator=g)
+    for Y in (zero_col, low_rank, torch.zeros(256, 16)):
+        Q, R = cholesky_qr(Y, method=method, return_r=True)
+        assert orth_err(Q) < 1e-4
+        assert (Q @ R - Y).norm() <= 1e-5 * max(1.0, Y.norm().item())
+
+
+@pytest.mark.parametrize("scale", [1e-30, 1e30])
+def test_extreme_scales(scale):
+    g = torch.Generator().manual_seed(0)
+    Y = torch.randn(512, 32, generator=g) * scale
+    for method in ("scqr3", "cqr2", "rcqr"):
+        assert orth_err(cholesky_qr(Y, method=method, on_breakdown="ignore")) < 1e-4
 
 
 def test_batched_matches_unbatched():
@@ -105,7 +162,7 @@ def test_cqr2_well_conditioned(kind, kappa):
 def test_cqr2_breaks_down_beyond_range():
     # With the chunked Gram (v0.4) fp32 cqr2 survives cond ~ 1e4 on CPU and breaks between 1e4 and 3e4.
     Y = make_spectrum(3072, 210, 1e5, "geometric")
-    assert orth_err(cholesky_qr(Y, method="cqr2")) > 1.0
+    assert orth_err(cholesky_qr(Y, method="cqr2", on_breakdown="ignore")) > 1.0
 
 
 @pytest.mark.parametrize("method,robust,kappa", [("scqr3", False, 1e5), ("scqr3", True, 1e7), ("cqr2", False, 1e3)])
