@@ -126,13 +126,13 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     the first pass runs in FP64, which handles cond(Y) up to at least 1e8.
 
     ``"cqr2"``: CholeskyQR2 (Yamamoto, Nakatsukasa, Yanagisawa, Fukaya, 2015). Two passes, about 1/3 cheaper. Use it
-    **only for well-conditioned inputs**: in FP32 it breaks down beyond cond(Y) ~ u^{-1/2} ~ 4e3.
+    **only for well-conditioned inputs** (cond(Y) <~ 1e3 recommended): in FP32 its first breakdown was measured from cond(Y) ~ 3e3 (clustered spectra; u^{-1/2} ~ 4e3) to 1e4-1e5 (geometric spectra).
 
     ``"auto"``: dispatch on shape. A single matrix (no batch, or batch size 1) with r <= 64 goes to Householder
     ``torch.linalg.qr`` (in FP32, with R's diagonal made non-negative), because CholeskyQR's fixed launch overhead
     (~0.2-0.8 ms) dominates there. Everything else uses ``"scqr3"`` (honouring ``robust``).
 
-    ``"rcqr"``: randomized (sketch-preconditioned) CholeskyQR, as in Balabanov (2022), Higgins et al. (2024) and the
+    ``"rcqr"``: randomized (sketch-preconditioned) CholeskyQR, as in Balabanov (2022), Higgins et al. (2025) and the
     Dion optimizer. A Gaussian sketch S (k x m, k = oversample * r rounded up to a multiple of 128, as in Dion) gives
     R0 from a Householder QR of the small matrix S Y; Y R0^{-1} is then well conditioned and one CholeskyQR pass
     finishes. One sketch is shared by all matrices of a batch.

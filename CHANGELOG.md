@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+- README: speed table vs `torch.linalg.qr`, a TF32 warning, a pattern for checking outside `torch.compile`, and a
+  "Formally verified core" section (Lean).
+- Documentation: the `cqr2` range is stated from the device-sweep measurements (first breakdown from cond(Y) ~ 3e3 for
+  clustered spectra to 1e4-1e5 for geometric spectra; cond(Y) <~ 1e3 recommended), replacing the earlier, inconsistent
+  4e3 / 1e4 / 3e4 figures. Higgins et al. citation year corrected (2025).
+
 ## 0.5.0 (2026-11-12)
 - Documentation moved from the README into `docs/` (how it works, accuracy, `verify=True`, devices, compatibility,
   PowerSGD); the README keeps the overview, install and links.
