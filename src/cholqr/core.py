@@ -1,5 +1,6 @@
 import functools
 import math
+import os
 import warnings
 from fractions import Fraction
 from typing import Optional
@@ -108,7 +109,7 @@ def _gram(Q: torch.Tensor) -> torch.Tensor:
 def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, return_r: bool = False,
                 out_dtype=None, shift: float = 1e-6, passes: Optional[int] = None, oversample: float = 1.25,
                 generator: Optional[torch.Generator] = None, on_breakdown: str = "fallback", verify: bool = False,
-                tol: float = 1e-4):
+                tol: Optional[float] = None):
     """Thin QR of a (batch of) tall-skinny matrix Y of shape (..., m, r), r <= m, via Cholesky QR.
 
     Methods
@@ -161,8 +162,9 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             compiles into a single graph; check orthogonality yourself there or use ``robust=True``.
         verify: certify the result (new in 0.5, opt-in). Every returned Q~ is accepted only if an FP64 bound proves
             ``||Q~^T Q~ - I||_F <= tol`` for the exact values of the returned tensor (see ``orthogonality_bound``;
-            a theorem under IEEE FP64 arithmetic in any summation order, independent of TF32 or of how Q~ was
-            computed). With ``verify=True`` the certificate replaces the empirical breakdown flags: uncertified
+            a theorem under the assumptions H0-H2: FP32-valued Q~, IEEE FP64 standard model, and FP64 GEMMs that sum
+            products in any order with or without FMA but without Strassen-type algorithms or FP64 emulation; given
+            these, independent of TF32 or of how Q~ was computed). With ``verify=True`` the certificate replaces the empirical breakdown flags: uncertified
             matrices are handled per ``on_breakdown``: ``"fallback"`` recomputes them (scqr3 with an FP64 first pass if
             the device has FP64, then Householder QR, in FP64 where available), re-verifies, and raises
             ``torch.linalg.LinAlgError`` if a matrix still cannot be certified; ``"warn"`` warns and returns them;
@@ -170,8 +172,9 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
             ``torch.func`` transforms (raises ``RuntimeError``; call ``orthogonality_bound`` outside the transform).
             Costs one FP64 Gram product (on the CPU for MPS tensors) and one host synchronization per call. Covers
             orthogonality only, not the accuracy of the subspace or of R.
-        tol: (verify only) Frobenius tolerance, default ``1e-4``. Q returned in float16/bfloat16/float8 generally
-            cannot be certified at 1e-4 (rounding Q alone moves the error by ~ sqrt(r) times the format's epsilon).
+        tol: (verify only) Frobenius tolerance. Default ``None`` = 1e-4 for float32/float64 output; for Q returned in
+            float16/bfloat16/float8 it must be given explicitly (``ValueError`` otherwise), because rounding Q alone
+            moves the error by ~ 2 sqrt(r) u_d; use ``out_dtype=torch.float32`` or tol >~ 1e-4 + 2 sqrt(r) u_d + r u_d^2.
     Returns:
         Q of shape (..., m, r), or (Q, R) with R of shape (..., r, r) if ``return_r``.
     """
@@ -199,6 +202,7 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
         raise ValueError(f"cholesky_qr expects tall-skinny input (r <= m), got m={m}, r={r}")
     if verify:
         _check_verify_call(Y, on_breakdown, tol)
+        tol = _resolve_tol(Y, out_dtype, tol)
     if method == "auto":
         batch = math.prod(Y.shape[:-2])
         if batch <= 1 and r <= _AUTO_QR_MAX_R:
@@ -367,7 +371,7 @@ def _cert_constants(m: int, l: int):
                                                        final multiply-add (1 - u)^2; sqrt(1 - g) >= 1 - g used]
       beta  = gamma_m / (1 - gamma_m) / ((1 - gamma_l) (1 - u)^2)   [Gram rounding, trace sum, final multiply-add]."""
     u = Fraction(1, 2 ** 53)
-    if not (2 * m * u < 1 and l * l * u < 1):
+    if not (2 * m * u < 1 and 2 * l * l * u < 1):                    # gamma_m, gamma_{l^2} < 1
         raise ValueError("cholqr: matrix too large for the FP64 certificate")
     g = lambda k: k * u / (1 - k * u)
     alpha = 1 / ((1 - u) ** 4 * (1 - g(l * l)))
@@ -375,9 +379,45 @@ def _cert_constants(m: int, l: int):
     return _round_up(alpha), _round_up(beta)
 
 
+_CUBLAS_EMULATION_ENV = ("CUBLAS_EMULATE_DOUBLE_PRECISION", "CUBLAS_EMULATION_STRATEGY")
+
+
 def _check_device(Q: torch.Tensor) -> torch.device:
-    """Device on which the FP64 check runs: CPU and CUDA in place, everything else (MPS has no FP64) on the CPU."""
-    return Q.device if Q.device.type in ("cpu", "cuda") else torch.device("cpu")
+    """Device on which the FP64 check runs: CPU, and NVIDIA CUDA in place (cuBLAS DGEMM); everything else on the CPU:
+    MPS (no FP64) and ROCm (device type 'cuda' too, but rocBLAS/hipBLASLt are excluded from the assumptions)."""
+    if Q.device.type == "cpu":
+        return Q.device
+    if Q.device.type == "cuda" and not getattr(torch.version, "hip", None):
+        return Q.device
+    return torch.device("cpu")
+
+
+def _fp64_emulation_requested(dev: torch.device) -> bool:
+    """True if cuBLAS may emulate FP64 GEMMs (Ozaki scheme, cuBLAS 13.0u2+), requested through the environment.
+    The standard-model assumption then does not hold, so no matrix is certified."""
+    if dev.type != "cuda":
+        return False
+    return any(os.environ.get(k, "").strip() not in ("", "0") for k in _CUBLAS_EMULATION_ENV)
+
+
+_INT_VIEW = {8: torch.int64, 4: torch.int32, 2: torch.int16, 1: torch.uint8}
+
+
+def _fp32_values(Qd: torch.Tensor):
+    """(Qf, ok): Qf = Qd as float32; ok (per matrix) iff the conversion is exact bit for bit and no entry of Qf is an
+    FP32 subnormal. Bit views are immune to flush-to-zero / denormals-are-zero modes, which could otherwise turn a
+    subnormal into 0 in the conversion to FP64 (then the matrix checked would differ from the one returned)."""
+    Qf = Qd.float()
+    ok = torch.ones(Qd.shape[:-2], dtype=torch.bool, device=Qd.device)
+    if Qd.numel() == 0:
+        return Qf, ok
+    if Qd.dtype != torch.float32:
+        it = _INT_VIEW[Qd.element_size()]
+        back = Qf.to(Qd.dtype).contiguous().view(it)
+        ok = ok & (back == Qd.contiguous().view(it)).flatten(-2).all(-1)
+    b = Qf.contiguous().view(torch.int32)
+    sub = ((b & 0x7F800000) == 0) & ((b & 0x007FFFFF) != 0)
+    return Qf, ok & ~sub.flatten(-2).any(-1)
 
 
 def orthogonality_bound(Q: torch.Tensor) -> torch.Tensor:
@@ -387,30 +427,34 @@ def orthogonality_bound(Q: torch.Tensor) -> torch.Tensor:
     ``||Q^T Q - I||_F <= bound`` for the exact real matrix Q^T Q (not its computed value), provided the FP64 arithmetic
     satisfies the IEEE standard model (round to nearest; matmul = sums of products in any order and blocking, with or
     without FMA, no Strassen-type algorithm and no reduced-precision emulation of FP64). ``inf`` for matrices with
-    non-finite entries and for float64 entries that are not FP32 values (the no-underflow argument needs FP32 values;
-    every Q returned by ``cholesky_qr`` passes through FP32). Cost: one FP64 Gram product. Not for use while compiling.
+    non-finite entries, for entries that are not FP32 values or are FP32 subnormals (the no-underflow argument needs
+    normal-or-zero FP32 values; every Q returned by ``cholesky_qr`` passes through FP32), and for all matrices when
+    cuBLAS FP64 emulation is requested by environment variable. CUDA tensors are checked with cuBLAS DGEMM, CPU, MPS
+    and ROCm tensors with the CPU BLAS (assumed IEEE and non-Strassen; not verified, e.g. for macOS Accelerate).
+    Cost: one FP64 Gram product. Not for use while compiling or tracing.
 
     bound = fl(alpha * e + beta * t), e = computed ||fl(G - I)||_F, t = computed tr(G), G = fl64(Q^T Q),
     alpha = 1 + (r^2 + 4) u + O(u^2), beta = m u (1 + O((m + r) u)), u = 2^-53; i.e. the computed error plus about
     m u tr(G) ~ 1.3e-10 for m = 4096, r = 276 with unit columns.
     """
-    if _is_compiling():
-        raise RuntimeError("cholqr.orthogonality_bound cannot run while compiling (the compiler may change the "
-                           "arithmetic the bound relies on); call it outside the compiled region")
+    if _is_compiling() or torch.jit.is_tracing():
+        raise RuntimeError("cholqr.orthogonality_bound cannot run while compiling or tracing (the compiler may change "
+                           "the arithmetic the bound relies on); call it outside the compiled/traced region")
     if Q.dim() < 2:
         raise ValueError("Q must have at least 2 dimensions (..., m, r)")
     if Q.dtype != torch.float64 and Q.dtype not in _FP32_SUBSET:
         raise TypeError(f"orthogonality_bound supports float64/float32/float16/bfloat16/float8 tensors, got {Q.dtype}")
     m, l = Q.shape[-2], Q.shape[-1]
     alpha, beta = _cert_constants(m, l)
+    dev = _check_device(Q)
+    emulated = _fp64_emulation_requested(dev)
+    if emulated:
+        warnings.warn("cholqr: CUBLAS_EMULATE_DOUBLE_PRECISION / CUBLAS_EMULATION_STRATEGY is set, so cuBLAS may emulate "
+                      "FP64 GEMMs; the certificate's arithmetic assumption does not hold and no matrix is certified "
+                      "(bound = inf)", RuntimeWarning, stacklevel=2)
     with torch.no_grad():
-        Qd = Q.detach().to(_check_device(Q))
-        if Qd.dtype == torch.float64:
-            on_grid = (Qd.float().double() == Qd).flatten(-2).all(-1) if l and m else torch.ones(
-                Qd.shape[:-2], dtype=torch.bool, device=Qd.device)
-        else:
-            Qd = Qd.float().double()
-            on_grid = None
+        Qf, on_grid = _fp32_values(Q.detach().to(dev))
+        Qd = Qf.double()
         finite = torch.isfinite(Qd).flatten(-2).all(-1) if l and m else torch.ones(
             Qd.shape[:-2], dtype=torch.bool, device=Qd.device)
         G = Qd.mT @ Qd
@@ -418,16 +462,37 @@ def orthogonality_bound(Q: torch.Tensor) -> torch.Tensor:
         T = G - torch.eye(l, dtype=torch.float64, device=Qd.device)       # off-diagonal: exact; diagonal: one rounding
         e = (T * T).sum(dim=(-2, -1)).sqrt()
         v = alpha * e + beta * t
-        good = finite if on_grid is None else finite & on_grid
+        good = finite & on_grid
+        if emulated:
+            good = torch.zeros_like(good)
         return torch.where(good, v, torch.full_like(v, math.inf))
 
 
-def _check_verify_call(Y, on_breakdown, tol):
+def _resolve_tol(Y, out_dtype, tol):
+    """Default tol: 1e-4 for float32/float64 output; low-precision outputs need an explicit tol."""
+    dt = Y.dtype if out_dtype is None else out_dtype
+    if tol is None:
+        if dt in (torch.float32, torch.float64):
+            return 1e-4
+        r = Y.shape[-1]
+        ud = torch.finfo(dt).eps / 2
+        hint = 1e-4 + 2 * math.sqrt(r) * ud + r * ud * ud
+        raise ValueError(f"cholqr: verify=True with Q returned in {dt} needs an explicit tol: rounding Q to {dt} alone "
+                         f"moves ||Q^T Q - I||_F by up to ~2 sqrt(r) u_d (u_d = {ud:g}). Use out_dtype=torch.float32, "
+                         f"or pass tol >~ 1e-4 + 2 sqrt(r) u_d + r u_d^2 = {hint:.3g} for r = {r}")
     if isinstance(tol, bool) or not isinstance(tol, (int, float)) or not (0 < tol < math.inf):
         raise ValueError(f"tol must be a positive finite number, got {tol!r}")
+    return float(tol)
+
+
+def _check_verify_call(Y, on_breakdown, tol):
     if on_breakdown == "ignore":
         raise ValueError("verify=True needs on_breakdown in ('fallback', 'warn', 'raise'); for a bound without any "
                          "action call cholqr.orthogonality_bound(Q)")
+    if torch.jit.is_tracing():
+        raise RuntimeError("cholqr: verify=True is not available under torch.jit.trace (the data-dependent fallback "
+                           "cannot be traced). Trace with verify=False and check the result with "
+                           "cholqr.orthogonality_bound(Q)")
     if _is_compiling() or _in_functorch(Y):
         raise RuntimeError("cholqr: verify=True is not available while compiling (torch.compile/export) or inside "
                            "torch.func transforms (vmap, grad): the fallback is data-dependent. Call cholesky_qr "

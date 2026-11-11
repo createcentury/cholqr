@@ -26,3 +26,5 @@ open CholQR.Verify
 #print axioms certificate
 #print axioms certified
 #print axioms gamma_ratio
+#print axioms gamma_lt_one
+#print axioms constants_ok

@@ -242,4 +242,45 @@ theorem gamma_ratio (x : ℝ) (hx : 2 * x < 1) :
   have h3 : 1 - x / (1 - x) = (1 - 2 * x) / (1 - x) := by field_simp; ring
   rw [h3]; field_simp
 
+/-! ## The implementation's constants satisfy `hα`, `hβ`
+
+`γ k = k u / (1 - k u)`. With `κ = (1-u)²(1-γ_{l²})`, `τ = 1-γ_l`, `ρ = (1-u)²` and the constants of
+`cholqr.core._cert_constants` (`α ≥ 1/((1-u)⁴(1-γ_{l²}))`, `β ≥ γ_m/(1-γ_m)/((1-γ_l)(1-u)²)`), the hypotheses
+`hα : 1 ≤ ρ κ α`, `hβ : γ_m/(1-γ_m) ≤ ρ τ β` of `certificate` hold, provided `2 l² u < 1`, `2 m u < 1`, `1 ≤ l`. -/
+
+/-- `γ k < 1` when `2 k u < 1`. -/
+theorem gamma_lt_one (x : ℝ) (hx : 2 * x < 1) : x / (1 - x) < 1 := by
+  have h : 0 < 1 - x := by linarith
+  rw [div_lt_one h]; linarith
+
+theorem constants_ok (u L M α β : ℝ) (hu : 0 < u) (hu1 : u < 1) (hL : 1 ≤ L) (hM : 0 ≤ M)
+    (hLsize : 2 * (L ^ 2 * u) < 1) (hMsize : 2 * (M * u) < 1)
+    (hα : 1 / ((1 - u) ^ 4 * (1 - (L ^ 2 * u) / (1 - L ^ 2 * u))) ≤ α)
+    (hβ : ((M * u) / (1 - M * u)) / (1 - (M * u) / (1 - M * u))
+          / ((1 - (L * u) / (1 - L * u)) * (1 - u) ^ 2) ≤ β) :
+    1 ≤ (1 - u) ^ 2 * ((1 - u) ^ 2 * (1 - (L ^ 2 * u) / (1 - L ^ 2 * u))) * α ∧
+    ((M * u) / (1 - M * u)) / (1 - (M * u) / (1 - M * u))
+      ≤ (1 - u) ^ 2 * (1 - (L * u) / (1 - L * u)) * β ∧
+    0 ≤ (M * u) / (1 - M * u) ∧ (M * u) / (1 - M * u) < 1 := by
+  have hL2 : 0 ≤ L ^ 2 * u := by positivity
+  have hLu0 : 0 ≤ L * u := by nlinarith
+  have hLu : 2 * (L * u) < 1 := by nlinarith
+  have hMu0 : 0 ≤ M * u := by positivity
+  have g2 := gamma_lt_one _ hLsize
+  have gl := gamma_lt_one _ hLu
+  have hpu : 0 < (1 - u) ^ 2 := by have : 0 < 1 - u := by linarith
+                                   positivity
+  refine ⟨?_, ?_, div_nonneg hMu0 (by linarith), gamma_lt_one _ hMsize⟩
+  · have hK : 0 < (1 - u) ^ 4 * (1 - (L ^ 2 * u) / (1 - L ^ 2 * u)) :=
+      mul_pos (by have : 0 < 1 - u := by linarith
+                  positivity) (by linarith)
+    have := (div_le_iff₀ hK).mp hα
+    calc (1 : ℝ) ≤ α * ((1 - u) ^ 4 * (1 - (L ^ 2 * u) / (1 - L ^ 2 * u))) := this
+      _ = (1 - u) ^ 2 * ((1 - u) ^ 2 * (1 - (L ^ 2 * u) / (1 - L ^ 2 * u))) * α := by ring
+  · have hT : 0 < (1 - (L * u) / (1 - L * u)) * (1 - u) ^ 2 := mul_pos (by linarith) hpu
+    have := (div_le_iff₀ hT).mp hβ
+    calc ((M * u) / (1 - M * u)) / (1 - (M * u) / (1 - M * u))
+        ≤ β * ((1 - (L * u) / (1 - L * u)) * (1 - u) ^ 2) := this
+      _ = (1 - u) ^ 2 * (1 - (L * u) / (1 - L * u)) * β := by ring
+
 end CholQR.Verify

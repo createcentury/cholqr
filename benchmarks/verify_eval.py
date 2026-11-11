@@ -225,11 +225,15 @@ def run_v12(args):
                 e2e_f = "returned"
             except torch.linalg.LinAlgError:
                 Qv, e2e_f = None, "LinAlgError"
+            except ValueError:                                  # low-precision output without explicit tol (0.5 API)
+                Qv, e2e_f = None, "ValueError"
             try:
                 cholesky_qr(Yd, verify=True, on_breakdown="raise", **kw)
                 e2e_r = "returned"
             except torch.linalg.LinAlgError:
                 e2e_r = "LinAlgError"
+            except ValueError:
+                e2e_r = "ValueError"
         for r in record(name, Q, flagged=bad):
             r["src"] = "raw"; r["e2e_raise"] = e2e_r; r["e2e_fallback"] = e2e_f
             out.write(json.dumps(r) + "\n"); n += 1

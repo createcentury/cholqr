@@ -166,7 +166,7 @@ Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 
 ## Certified orthogonality (`verify=True`)
 
 ```python
-Q = cholesky_qr(Y, verify=True)            # every returned matrix satisfies ||Q^T Q - I||_F <= 1e-4 (proved)
+Q = cholesky_qr(Y, verify=True)            # every returned matrix satisfies ||Q^T Q - I||_F <= 1e-4 (proved under IEEE FP64 assumptions H0-H2)
 Q = cholesky_qr(Y, verify=True, tol=1e-6)
 b = cholqr.orthogonality_bound(Q)           # the bound itself, per matrix (float64)
 ```
@@ -183,25 +183,35 @@ diagonal bound the true column norms; the rounding of the norm, the trace and th
 The algebraic part is proved in Lean ([`lean/CholQR/Verify.lean`](lean/CholQR/Verify.lean)); the floating-point
 facts are proved on paper. It does not matter how Q was computed (TF32, a broken-down factorization, another device).
 
-**Assumptions.** The FP64 kernels that run the check follow IEEE 754 binary64 with round-to-nearest (standard model;
-correctly rounded sqrt): CPU BLAS for CPU and MPS tensors, cuBLAS DGEMM for CUDA tensors. Not covered: Strassen-type
-GEMMs, FP64 emulated on lower-precision units, x87 extended-precision accumulation. Flush-to-zero / denormal modes do
-not matter (no intermediate is subnormal). float64 tensors passed to `orthogonality_bound` must hold FP32 values
-(otherwise the bound is `inf`); non-finite matrices are never certified.
+**Assumptions.** (H0) the checked entries are finite, normal-or-zero FP32 values (true for every value cholqr returns,
+except FP32 subnormals); (H1) IEEE 754 binary64 with round-to-nearest (standard model; correctly rounded sqrt);
+(H2) the FP64 GEMM sums the products in any order, with or without FMA, without Strassen-type algorithms, FP64
+emulation on lower-precision units or x87 extended-precision accumulation. Where the check runs: cuBLAS DGEMM for
+NVIDIA CUDA tensors; the CPU BLAS for CPU, MPS and ROCm tensors (ROCm's rocBLAS/hipBLASLt are excluded, the tensor is
+copied to the CPU). That the CPU BLAS satisfies (H2) — e.g. that macOS Accelerate, OpenBLAS or MKL do not use
+Strassen-type DGEMM — is assumed, not checked. If `CUBLAS_EMULATE_DOUBLE_PRECISION` or `CUBLAS_EMULATION_STRATEGY` is
+set (cuBLAS FP64 emulation, 13.0u2+), CUDA checks return `inf` with a warning. Matrices with an FP32 subnormal entry
+get `inf` (not certified): with flush-to-zero / denormals-are-zero modes (`torch.set_flush_denormal(True)`) the FP64
+copy would differ from the returned values; detection uses bit patterns, so it works in every mode, and no other
+intermediate of the check is ever subnormal. float64 tensors passed to `orthogonality_bound` must hold FP32 values
+(otherwise `inf`); non-finite matrices are never certified.
 
 **What happens when a matrix is not certified** (`on_breakdown`): `"fallback"` (default) recomputes only those matrices
 (scqr3 with an FP64 first pass where the device has FP64, then Householder QR, in FP64 where available, rounded through
 FP32), re-verifies, and raises `torch.linalg.LinAlgError` if one still fails, so a returned Q is always certified;
-`"warn"` warns and returns the uncertified result; `"raise"` raises; `"ignore"` is rejected (`ValueError`; use
+`"warn"` warns and returns the uncertified result (a Python `RuntimeWarning`: under the default warning filter it is
+shown once per call site, repeated failures from the same line are silent; use `"raise"` or
+`warnings.simplefilter("always")` if every failure must be seen); `"raise"` raises; `"ignore"` is rejected (`ValueError`; use
 `orthogonality_bound`). With `verify=True` the certificate replaces the empirical flags (a matrix the detector flags
 but the certificate accepts is returned as is).
 
 | mode | `verify=True` |
 |---|---|
-| eager CPU / CUDA | check in FP64 on the tensor's device; one host synchronization |
+| eager CPU / NVIDIA CUDA | check in FP64 on the tensor's device; one host synchronization |
+| eager ROCm | Q is copied to the CPU and checked there (rocBLAS/hipBLASLt not assumed) |
 | eager MPS | Q is copied to the CPU (m·r·4 bytes per matrix) and checked there; fallback runs on MPS (Householder in FP32) |
 | `torch.compile`, `torch.export` | `RuntimeError` at call time (no data-dependent fallback inside a graph); compile with `verify=False` and call `orthogonality_bound(Q)` outside |
-| `torch.func.vmap` / `grad` | `RuntimeError` at call time; same workaround |
+| `torch.func.vmap` / `grad`, `torch.jit.trace` | `RuntimeError` at call time; same workaround |
 | autograd | unchanged: the check runs under `no_grad` on a detached copy |
 | CUDA graphs | not capturable (host synchronization) |
 
@@ -215,9 +225,10 @@ Single run on a loaded machine; CUDA not measured yet. The cost is one FP64 Gram
 on GPUs with slow FP64 (consumer cards run FP64 at 1/64 of FP32) expect a larger relative cost.
 
 **What is not covered.** Orthogonality only: not the accuracy of the subspace range(Q) vs range(Y), nor of R
-(Y = QR). A residual certificate for ‖Y − QR‖ is future work. Q requested in float16/bfloat16/float8 can usually not be
-certified at 1e-4 (rounding Q alone moves the error by ~√r·ε of that format); use `out_dtype=torch.float32` or a larger
-`tol`. Why FP64: the same argument run in FP32 gives a slack of ~m·r·2^-24 ≈ 0.07 for 4096 x 276, far above 1e-4.
+(Y = QR). A residual certificate for ‖Y − QR‖ is future work. The default `tol=None` means 1e-4 for float32/float64
+output; for Q requested in float16/bfloat16/float8 a `tol` must be given (`ValueError` at call time otherwise), because
+rounding Q alone moves the error by up to ~2√r·u_d (u_d the format's unit roundoff): use `out_dtype=torch.float32`, or
+tol ≳ 1e-4 + 2√r·u_d + r·u_d². The tolerance is never relaxed silently. Why FP64: the same argument run in FP32 gives a slack of ~m·r·2^-24 ≈ 0.07 for 4096 x 276, far above 1e-4.
 
 ## What is proved, what is measured, and how to check your device
 

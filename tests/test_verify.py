@@ -78,7 +78,7 @@ def _assert_sound(Q, tols_extra=()):
         tols = [1e-4, *tols_extra] + [ex * (1 - 2.0 ** -j) for j in (1, 10, 30, 45, 52)] + \
                [ex * (1 + 2.0 ** -j) for j in (10, 30, 52)]
         for tol in tols:
-            if tol > 0 and b <= tol:
+            if 0 < tol < math.inf and b <= tol:
                 assert ex2 <= Fraction(tol) ** 2, (k, tol, b, ex)
 
 
@@ -210,8 +210,13 @@ def test_verify_argument_checks():
 
 def test_verify_low_precision_out_dtype():
     Y = torch.randn(512, 32, generator=torch.Generator().manual_seed(0))
+    for dt in (torch.bfloat16, torch.float16):
+        with pytest.raises(ValueError, match="explicit tol"):
+            cholesky_qr(Y, verify=True, out_dtype=dt)                        # at call time, before any fallback
+        with pytest.raises(ValueError, match="explicit tol"):
+            cholesky_qr(Y.to(dt), verify=True)
     with pytest.raises(torch.linalg.LinAlgError, match="bfloat16"):
-        cholesky_qr(Y, verify=True, out_dtype=torch.bfloat16)
+        cholesky_qr(Y, verify=True, out_dtype=torch.bfloat16, tol=1e-4)      # explicit tol: honoured, not relaxed
     Q = cholesky_qr(Y, verify=True, out_dtype=torch.bfloat16, tol=0.5)
     assert float(orthogonality_bound(Q)) <= 0.5
     Q = cholesky_qr(Y.half(), verify=True, out_dtype=torch.float32)
@@ -299,3 +304,57 @@ def test_verify_fallback_autograd_and_inference_mode():
     assert torch.isfinite(Yb.grad).all()
     with torch.inference_mode():
         assert bool((orthogonality_bound(cholesky_qr(Yb.detach(), verify=True)) <= 1e-4).all())
+
+
+def test_size_check_needs_2_l2_u():
+    with pytest.raises(ValueError):
+        core._cert_constants(8, 2 ** 26)                                     # 2 l^2 u = 2^0: rejected
+    core._cert_constants(8, 2 ** 25)                                         # 2 l^2 u = 2^-2: accepted
+
+
+def test_subnormal_entries_not_certified_any_flush_mode():
+    Q = torch.linalg.qr(torch.randn(64, 4, dtype=torch.float64))[0].float()
+    Q[5, 2] = 1e-40                                                          # FP32 subnormal
+    Qd = Q.double()                                                          # made before any flush mode
+    old = torch.is_flush_denormal_enabled() if hasattr(torch, "is_flush_denormal_enabled") else False
+    try:
+        for flush in (False, True):
+            torch.set_flush_denormal(flush)
+            assert math.isinf(float(orthogonality_bound(Q)))
+            assert math.isinf(float(orthogonality_bound(Qd)))
+            Qh = Q.half(); Qh[5, 2] = 2.0 ** -20                             # fp16 subnormal (normal in FP32)
+            b = float(orthogonality_bound(Qh))
+            assert b >= exact_err(Qh) or math.isinf(b)                       # sound in either mode
+    finally:
+        torch.set_flush_denormal(old)
+    assert math.isfinite(float(orthogonality_bound(Qh)))                     # without flushing: certifiable
+
+
+def test_cublas_fp64_emulation_env(monkeypatch):
+    cuda = torch.device("cuda")
+    assert not core._fp64_emulation_requested(cuda)
+    for k in core._CUBLAS_EMULATION_ENV:
+        monkeypatch.setenv(k, "1")
+        assert core._fp64_emulation_requested(cuda)
+        assert not core._fp64_emulation_requested(torch.device("cpu"))     # CPU checks do not use cuBLAS
+        monkeypatch.setenv(k, "0")
+        assert not core._fp64_emulation_requested(cuda)
+        monkeypatch.delenv(k)
+    if torch.cuda.is_available() and not getattr(torch.version, "hip", None):
+        monkeypatch.setenv("CUBLAS_EMULATION_STRATEGY", "eager")
+        Q = cholesky_qr(torch.randn(256, 8, device="cuda"))
+        with pytest.warns(RuntimeWarning, match="emulate"):
+            assert math.isinf(float(orthogonality_bound(Q)))
+
+
+def test_rocm_and_mps_checked_on_cpu():
+    if getattr(torch.version, "hip", None) and torch.cuda.is_available():
+        assert core._check_device(torch.zeros(2, 2, device="cuda")).type == "cpu"
+    assert core._check_device(torch.zeros(2, 2)).type == "cpu"
+
+
+def test_verify_under_jit_trace_raises():
+    with pytest.raises(RuntimeError, match="jit.trace"):
+        torch.jit.trace(lambda y: cholesky_qr(y, verify=True), torch.randn(64, 4))
+    with pytest.raises(RuntimeError, match="tracing"):
+        torch.jit.trace(lambda q: orthogonality_bound(q), torch.randn(64, 4))
