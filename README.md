@@ -160,6 +160,35 @@ Q = cholesky_qr(Y)               # fast default; beyond cond(Y) ~ 1e6 the affect
 Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 at full speed (no fallback needed)
 ```
 
+## What is proved, what is measured, and how to check your device
+
+- **Proved (exact arithmetic; Lean 4 proofs in [`lean/`](lean/)):** the spectrum of the shifted first pass
+  (singular values σᵢ/√(σᵢ²+s)); a positive-definiteness criterion for the shifted computed Gram matrix; and the
+  a-posteriori orthogonality bound ‖QᵀQ − I‖ ≤ (s + e)‖L⁻¹‖² (+ a forming term). The last one is the bound of Fukaya et
+  al. (2020, eq. 3.33), restated with every rounding term collected in e.
+- **Measured (pre-registered experiments; details in the technical note):** where FP32 CholeskyQR breaks for several
+  spectra and sizes; that the bound holds with the measured rounding terms and no safety margin; that the breakdown
+  check flags every run whose orthogonality exceeded 1e-4 in validation data it was not tuned on; how inputs in
+  bfloat16 / float16 / float8 / float64 behave; and the behaviour on several devices (table below).
+- **Not covered:** the floating-point layer is not formalized; devices and settings not in the table; `torch.compile`
+  (the check is skipped there); gradual loss of orthogonality for `"rcqr"` and custom `passes`.
+
+Check your own device in about a second:
+
+```bash
+python -m cholqr.diagnose            # cuda, then mps, then cpu;  --full adds 4096 x 276
+```
+
+It reports the Gram-product error class (FP32 or TF32), the condition numbers where `scqr3` / `cqr2` break, whether
+the default stays orthogonal, whether `robust=True` is available, and a timing against `torch.linalg.qr`.
+
+<!-- DEVICE TABLE: filled from the device sweep (benchmarks/device_sweep.py) -->
+| device | Gram error ε/u (FP32) | first breakdown, scqr3 / cqr2 (1024 x 64, geometric) | checks |
+|---|---|---|---|
+| Apple M4 CPU | 27–31 (m 1024), 5–6 (m 4096) | pending | all pass |
+| Apple M4 GPU (MPS) | 27–30 (m 1024), 5–6 (m 4096) | pending | all pass; the TF32 setting has no effect |
+| NVIDIA (several) | pending | pending | pending |
+
 ## `method="auto"`
 
 CholeskyQR costs ~45 small kernel launches, so a single small matrix takes about 1 ms eager and 0.3 ms or more compiled.
