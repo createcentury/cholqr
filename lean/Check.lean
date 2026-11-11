@@ -28,3 +28,10 @@ open CholQR.Verify
 #print axioms gamma_ratio
 #print axioms gamma_lt_one
 #print axioms constants_ok
+open CholQR.D1
+#print axioms col_sq_bounds
+#print axioms scale_facts
+#print axioms D1_scaled
+#print axioms D1_delta
+#print axioms D1_sharp
+#print axioms D1_paper
