@@ -1,0 +1,32 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.9",  torch: "2.1.*", numpy: "numpy<2"}
+          - {os: ubuntu-latest, python: "3.10", torch: "2.3.*", numpy: "numpy<2"}
+          - {os: ubuntu-latest, python: "3.11", torch: "2.5.*", numpy: "numpy"}
+          - {os: ubuntu-latest, python: "3.12", torch: "2.7.*", numpy: "numpy"}
+          - {os: ubuntu-latest, python: "3.13", torch: "",      numpy: "numpy"}
+          - {os: macos-latest,  python: "3.12", torch: "",      numpy: "numpy"}
+          - {os: windows-latest, python: "3.12", torch: "",     numpy: "numpy"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${{ runner.os }}" = "Linux" ]; then IDX="--index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple"; else IDX=""; fi
+          python -m pip install $IDX "torch${{ matrix.torch && format('=={0}', matrix.torch) || '' }}" "${{ matrix.numpy }}" pytest
+          python -m pip install -e . --no-deps
+      - name: Test
+        run: python -m pytest -q
