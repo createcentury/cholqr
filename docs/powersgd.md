@@ -26,3 +26,20 @@ The result equals PyTorch's up to column signs, which the PowerSGD approximation
 that DDP gradients match with and without the patch.
 
 [Back to README](../README.md)
+
+## Distributed training: keep decisions identical on every rank
+
+In PowerSGD the factor is all-reduced before it is orthogonalized, so every rank normally sees bit-identical input and
+makes the same decision. That holds only if the orthogonalization is deterministic and the GPUs are identical. If ranks
+can differ (mixed GPU types, non-deterministic kernels), a fallback taken on one rank but not on another gives the ranks
+different factors, and the model replicas drift apart without any error. Recommendations, for this hook and for any use
+of `cholesky_qr` inside data-parallel training (DDP, FSDP, ZeRO):
+
+- Do not use `on_breakdown="raise"` in multi-process training: a rank that raises leaves the others waiting at the next
+  collective (a hang).
+- If you check or fall back, make the decision collective: reduce the per-rank "bad" flag with
+  `torch.distributed.all_reduce(flag, op=ReduceOp.MAX)` before branching, so that all ranks recompute the same matrices;
+  or orthogonalize on one rank and broadcast the result.
+- For the periodic check outside a compiled graph (README), reduce the result of `cholqr.orthogonality_bound(Q)` with
+  `ReduceOp.MAX` before deciding to recompute.
+

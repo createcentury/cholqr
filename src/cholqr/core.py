@@ -142,6 +142,11 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     ``torch.where`` fallback skips a failed pass without host synchronization, so the function compiles into a single
     graph.
 
+    What is checked: orthogonality of Q only. Neither the default check nor ``verify=True`` says anything about how well
+    range(Q) matches the range of the exact input: information lost when Y was rounded to a low-precision format
+    (bfloat16, float16, float8, or plain TF32 products), or when Y was ill-conditioned, is not detected. A Q that passes
+    ``verify=True`` can still span the wrong subspace in those cases.
+
     Breakdown detection (new in 0.5): a matrix is flagged when a Cholesky factorization fails in any pass (the pass was
     skipped, so the result is not orthonormal) or when the last pass's Cholesky factor has a diagonal entry below
     ``0.195`` (the input to the last pass was so ill-conditioned that the final orthogonality can exceed ~1e-4, e.g. cqr2
