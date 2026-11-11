@@ -62,7 +62,13 @@ cholqr depends only on PyTorch (>= 2.1). If you need a specific CUDA or ROCm bui
 
 ## Citation
 
-Please cite the algorithm:
+If you use cholqr, please cite the software ([CITATION.cff](https://github.com/createcentury/cholqr/blob/main/CITATION.cff)):
+
+> S. Fukuda. *cholqr: fast, compile-friendly shifted CholeskyQR3 for batched tall-skinny matrices in PyTorch.*
+> Software, version 0.5.0, 2026. doi:[10.5281/zenodo.24144958](https://doi.org/10.5281/zenodo.24144958)
+> (all versions; version 0.5.0: [10.5281/zenodo.24144959](https://doi.org/10.5281/zenodo.24144959)).
+
+and the algorithm:
 
 > T. Fukaya, R. Kannan, Y. Nakatsukasa, Y. Yamamoto, Y. Yanagisawa. *Shifted Cholesky QR for computing the QR
 > factorization of ill-conditioned matrices.* SIAM J. Sci. Comput. 42(1):A477–A503, 2020.

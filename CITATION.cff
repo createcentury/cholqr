@@ -1,11 +1,20 @@
 cff-version: 1.2.0
-message: "If you use cholqr, please cite the software and the technical note below."
+message: "If you use cholqr, please cite the software (and the algorithm papers listed in the README)."
 title: "cholqr: fast, compile-friendly shifted CholeskyQR3 for batched tall-skinny matrices in PyTorch"
 type: software
 authors:
   - family-names: Fukuda
     given-names: Soki
 version: 0.5.0
+date-released: 2026-11-12
+doi: 10.5281/zenodo.24144958
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24144958
+    description: "Concept DOI (all versions)"
+  - type: doi
+    value: 10.5281/zenodo.24144959
+    description: "Version 0.5.0"
 license: MIT
 repository-code: "https://github.com/createcentury/cholqr"
 url: "https://github.com/createcentury/cholqr"

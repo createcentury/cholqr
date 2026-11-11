@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (unreleased)
+## 0.5.0 (2026-11-12)
 - Documentation moved from the README into `docs/` (how it works, accuracy, `verify=True`, devices, compatibility,
   PowerSGD); the README keeps the overview, install and links.
 - **Fix: non-finite gradients after a fallback.** When a Cholesky pass failed and the backend returned NaN/inf in the
