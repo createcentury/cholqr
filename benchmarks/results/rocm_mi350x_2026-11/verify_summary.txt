@@ -1,0 +1,13 @@
+records 1196 (finite 1196), files ['/workspace/out/v12_small_cuda_high.jsonl', '/workspace/out/v12_small_cuda_highest.jsonl']
+V1 violations 0  ambiguous 0  bound<true 0
+V1 certified@1e-4 with true>1e-4: 0
+non-finite matrices: 0  certified: 0
+end-to-end verified (fallback) returned: 594  true>1e-4: 0  max true 8.612149883204842e-05
+raw outputs with true>1e-4: 178; detector flagged 161; certificate rejected 178
+raw outputs with true<=1e-4(1-1e-5): 424; certified 424
+e2e fallback outcomes Counter({'returned': 588, 'ValueError': 8})  raise outcomes Counter({'returned': 419, 'LinAlgError': 169, 'ValueError': 8})
+e2e LinAlgError under fallback: ['lowp-inout/torch.bfloat16/200x12', 'lowp-inout/torch.float16/200x12', 'lowp-inout/torch.float8_e4m3fn/200x12', 'lowp-inout/torch.float8_e5m2/200x12']
+V2 |e_hat-true| > slack: 0  max dev/slack 0.0141  median 0.00499
+slack range 7.72715225139109e-14 4.583000645652646e-13
+exact 1196
+fsum 0

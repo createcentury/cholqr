@@ -1,0 +1,8 @@
+cholqr 0.5.0 / torch 2.10.0+rocm7.1.1.gitd9556b05 on cuda (AMD Instinct MI350X)
+float32_matmul_precision = highest
+Gram error eps_2/u: 1024x64: 10.6, 4096x276: 2.7  ->  FP32 accumulation
+breakdown without check (1024x64): scqr3 from cond 1e+07, cqr2 from cond 1e+04
+default (check + fallback), cond 1e2..1e10: max ||Q^T Q - I||_2 = 1.2e-06 (OK)
+robust=True available; orthogonality at cond 1e9: 6.1e-07
+timing 16x2048x128: cholesky_qr 2.23 ms, torch.linalg.qr 36.86 ms
+(diagnose took 2.1 s)

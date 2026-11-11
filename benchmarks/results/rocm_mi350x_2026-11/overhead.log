@@ -1,0 +1,37 @@
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/compile_fx.py:321: UserWarning: TensorFloat32 tensor cores for float32 matrix multiplication available but not enabled. Consider setting `torch.set_float32_matmul_precision('high')` for better performance.
+  warnings.warn(
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/lowering.py:1904: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+{'shape': [1, 1024, 64], 'torch_qr_ms': 1.1872709728777409, 'ignore_ms': 0.7615373469889164, 'fallback_ms': 0.7981676608324051, 'compiled_ms': 0.5481075495481491, 'check_overhead_pct': 4.8100482515169185}
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/lowering.py:1904: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+{'shape': [1, 4096, 276], 'torch_qr_ms': 6.636756006628275, 'ignore_ms': 2.8152335435152054, 'fallback_ms': 2.8621889650821686, 'compiled_ms': 2.595198806375265, 'check_overhead_pct': 1.6679050189325695}
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/lowering.py:1904: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+{'shape': [16, 2048, 128], 'torch_qr_ms': 37.02258691191673, 'ignore_ms': 2.21532816067338, 'fallback_ms': 2.2553782910108566, 'compiled_ms': 1.7064455896615982, 'check_overhead_pct': 1.8078644531518417}
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/lowering.py:1904: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+{'shape': [40, 768, 210], 'torch_qr_ms': 165.61212623491883, 'ignore_ms': 13.647429645061493, 'fallback_ms': 13.724098913371563, 'compiled_ms': 11.406316421926022, 'check_overhead_pct': 0.5617854079783768}
+Traceback (most recent call last):
+  File "/workspace/cholqr/benchmarks/bench_overhead.py", line 50, in <module>
+    main()
+  File "/workspace/cholqr/benchmarks/bench_overhead.py", line 38, in main
+    row["ignore_ms"] = timeit(lambda: cholqr.cholesky_qr(Y, on_breakdown="ignore"), dev)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/cholqr/benchmarks/bench_overhead.py", line 13, in timeit
+    fn()
+  File "/workspace/cholqr/benchmarks/bench_overhead.py", line 38, in <lambda>
+    row["ignore_ms"] = timeit(lambda: cholqr.cholesky_qr(Y, on_breakdown="ignore"), dev)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/cholqr/core.py", line 224, in cholesky_qr
+    Q, R, bad = _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/venv/lib/python3.11/site-packages/cholqr/core.py", line 323, in _cqr
+    L, info = torch.linalg.cholesky_ex(Gs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.AcceleratorError: HIP error: unspecified launch failure
+Search for `hipErrorLaunchFailure' in https://rocm.docs.amd.com/projects/HIP/en/latest/index.html for more information.
+HIP kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing AMD_SERIALIZE_KERNEL=3
+Compile with `TORCH_USE_HIP_DSA` to enable device-side assertions.
+

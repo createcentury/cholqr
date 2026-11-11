@@ -1,0 +1,11 @@
+2 64 ok
+2 128 ok
+2 200 ok
+2 256 ok
+2 257 FAIL HIP error: unspecified launch failure
+2 276 FAIL HIP error: unspecified launch failure
+8 210 ok
+40 210 ok
+4 160 ok
+4 192 ok
+2 224 ok

@@ -1,0 +1,1 @@
+{"sanity_mismatches": 0, "torch": "2.10.0+rocm7.1.1.gitd9556b05", "cholqr": "0.5.0", "python": "3.11.15", "device": "cuda", "precision": "highest", "cpu": "x86_64", "gpu": "AMD Instinct MI350X", "capability": "9.5", "cuda": null, "hip": "7.1.52802", "allow_tf32": false}

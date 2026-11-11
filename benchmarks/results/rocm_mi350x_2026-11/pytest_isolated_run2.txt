@@ -1,0 +1,336 @@
+### tests/test_modes.py::test_cuda_graph_capture_with_ignore
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________________ test_cuda_graph_capture_with_ignore ______________________
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+    def test_cuda_graph_capture_with_ignore():
+        Y = torch.randn(4, 1024, 64, device="cuda")
+        cholesky_qr(Y, on_breakdown="ignore")                            # warm up
+        g = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(g):
+>           Q = cholesky_qr(Y, on_breakdown="ignore")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_modes.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/venv/lib/python3.11/site-packages/cholqr/core.py:224: in cholesky_qr
+    Q, R, bad = _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+Y = <[AcceleratorError("HIP error: operation failed due to a previous error during capture\nSearch for `hipErrorStreamCapt...mpile with `TORCH_USE_HIP_DSA` to enable device-side assertions.\n") raised in repr()] Tensor object at 0x7f8c19bb9130>
+method = 'scqr3', robust = False, return_r = False, out_dtype = None
+shift = 1e-06, passes = None, oversample = 1.25, generator = None
+
+    def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, generator):
+        """Core passes. Returns (Q, R or None, bad) with bad of shape Y.shape[:-2] (breakdown flags)."""
+        m, r = Y.shape[-2], Y.shape[-1]
+        n_pass = passes if passes is not None else {"scqr3": 3, "cqr2": 2, "rcqr": 1}[method]
+        u = torch.finfo(torch.float32).eps
+        Q = Y.double() if robust else Y.float()
+        R = None
+        if method == "rcqr":
+            k = min(m, max(r, math.ceil(oversample * r / 128) * 128))
+            Q, a0 = _prescale(Q) if Q.dtype == torch.float32 else (Q, None)
+            d0 = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)
+            Q = Q / d0
+            d0 = d0 if a0 is None else d0 * a0                                 # total column scale (for R)
+            S = torch.randn(k, m, device=Q.device, dtype=Q.dtype, generator=generator) / math.sqrt(k)
+            R0 = torch.linalg.qr(S @ Q, mode="r")[1]                            # (..., r, r)
+            dg = R0.diagonal(dim1=-2, dim2=-1)
+            tiny = 1e-30 + u * dg.abs().amax(dim=-1, keepdim=True)
+            dg_safe = torch.where(dg.abs() < tiny, torch.where(dg < 0, -tiny, tiny), dg)   # rank-deficient guard
+            R0 = R0 - torch.diag_embed(dg) + torch.diag_embed(dg_safe)
+            Q = torch.linalg.solve_triangular(R0, Q, upper=True, left=False)
+            if return_r:
+                R = R0 @ torch.diag_embed(d0.squeeze(-2))
+        bad = None
+        eye = torch.eye(r, device=Q.device, dtype=Q.dtype)                    # built once (torch.eye is costly to launch)
+        for i in range(n_pass):
+            if robust and i == 1:
+                Q = Q.float()
+                R = R.float() if R is not None else None
+                eye = eye.float()
+            a = None
+            if i == 0 and Q.dtype == torch.float32:
+                Q, a = _prescale(Q)
+            d = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)                 # (..., 1, r) column norms
+            Q = Q / d
+            if a is not None:
+                d = d * a                                                     # total column scale (for R)
+            G = _gram(Q)
+            # columns have unit norm, so tr(G) = r (zero columns only make it smaller, i.e. the shift is conservative)
+            if method == "scqr3" and i == 0:
+                s = (1e-14 if robust else shift) * r
+            else:
+                s = u                                                             # O(u) safeguard, = (u / r) * tr(G)
+            Gs = G + (s + 1e-30) * eye
+            pre_fail = None
+            if Gs.requires_grad and torch.is_grad_enabled():
+                # Find failing matrices first without autograd and factor the identity for them instead: a failed factor can
+                # hold NaN/inf (backend dependent), and torch.where would then turn its zero gradient into 0 * NaN = NaN.
+                # The forward result is unchanged (a failed pass keeps Q); only the backward graph is made finite.
+                with torch.no_grad():
+                    L0, info0 = torch.linalg.cholesky_ex(Gs)
+                    pre_fail = (info0 != 0) | ~torch.isfinite(L0.diagonal(dim1=-2, dim2=-1)).all(dim=-1)
+                Gs = torch.where(pre_fail[..., None, None], eye.expand_as(Gs), Gs)
+>           L, info = torch.linalg.cholesky_ex(Gs)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           torch.AcceleratorError: HIP error: operation not permitted when stream is capturing
+E           Search for `hipErrorStreamCaptureUnsupported' in https://rocm.docs.amd.com/projects/HIP/en/latest/index.html for more information.
+E           HIP kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E           For debugging consider passing AMD_SERIALIZE_KERNEL=3
+E           Compile with `TORCH_USE_HIP_DSA` to enable device-side assertions.
+
+/opt/venv/lib/python3.11/site-packages/cholqr/core.py:323: AcceleratorError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+    def test_cuda_graph_capture_with_ignore():
+        Y = torch.randn(4, 1024, 64, device="cuda")
+        cholesky_qr(Y, on_breakdown="ignore")                            # warm up
+        g = torch.cuda.CUDAGraph()
+>       with torch.cuda.graph(g):
+
+tests/test_modes.py:90: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/venv/lib/python3.11/site-packages/torch/cuda/graphs.py:268: in __exit__
+    self.cuda_graph.capture_end()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch.cuda.graphs.CUDAGraph object at 0x7f8c19bd2930>
+
+    def capture_end(self) -> None:
+        r"""End CUDA graph capture on the current stream.
+    
+        After ``capture_end``, ``replay`` may be called on this instance.
+    
+        Typically, you shouldn't call ``capture_end`` yourself.
+        Use :class:`~torch.cuda.graph` or :func:`~torch.cuda.make_graphed_callables`,
+        which call ``capture_end`` internally.
+        """
+>       super().capture_end()
+E       torch.AcceleratorError: HIP error: operation failed due to a previous error during capture
+E       Search for `hipErrorStreamCaptureInvalidated' in https://rocm.docs.amd.com/projects/HIP/en/latest/index.html for more information.
+E       HIP kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing AMD_SERIALIZE_KERNEL=3
+E       Compile with `TORCH_USE_HIP_DSA` to enable device-side assertions.
+
+/opt/venv/lib/python3.11/site-packages/torch/cuda/graphs.py:130: AcceleratorError
+1 failed in 2.51s
+### exit 1 tests/test_modes.py::test_cuda_graph_capture_with_ignore
+### tests/test_modes.py::test_compile_reduce_overhead_cuda
+F                                                                        [100%]
+=================================== FAILURES ===================================
+______________________ test_compile_reduce_overhead_cuda _______________________
+
+self = <torch._inductor.cudagraph_trees.CUDAGraphNode object at 0x7feda4806f10>
+model = <function partition_0 at 0x7fed868647c0>, inputs = []
+
+    def _record(self, model: ModelType, inputs: list[InputType]) -> OutputType:
+        "Record the model"
+        assert self.graph is not None
+    
+        def static_input_iter() -> Generator[torch.Tensor, None, None]:
+            for i in self.wrapped_function.static_input_idxs:
+                _inp = inputs[i]
+                if isinstance(
+                    _inp, torch.Tensor
+                ) and not self._is_cuda_graph_recorded_tensor(_inp):
+                    yield _inp
+    
+        # see: output_is_alias_of_persistent_static_inputs above
+        static_input_persistent_storage_ptrs: dict[int, StorageWeakRefWrapper] = {
+            inp.untyped_storage().data_ptr(): StorageWeakRefWrapper(inp)
+            for inp in itertools.chain(
+                static_input_iter(), self.wrapped_function.constants
+            )
+        }
+    
+        if config.triton.slow_path_cudagraph_asserts:
+            # need to use parent live weakrefs because live_indices isn't set yet
+            memory = (
+                [] if self.parent is None else list(self.parent.path_live_weakrefs())
+            )
+            memory += [
+                StorageWeakRefWrapper(elem)
+                for i, elem in enumerate(inputs)
+                if isinstance(elem, torch.Tensor)
+                and i not in self.wrapped_function.static_input_idxs
+                and elem.untyped_storage().data_ptr() != 0
+            ]
+            check_memory_pool(self.device, self.cuda_graphs_pool, memory)
+    
+        with (
+            preserve_rng_state(),
+            torch.cuda.device(self.device),
+            clear_cublas_manager(),
+            torch.cuda.graph(
+                self.graph,
+                stream=self.stream,
+                pool=self.cuda_graphs_pool,
+                capture_error_mode="thread_local",
+            ),
+            get_history_recording(),
+        ):
+>           static_outputs = model(inputs)
+                             ^^^^^^^^^^^^^
+
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:1285: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/tmp/torchinductor_root/pn/cpnb7vrhny5oazkd3uk7anoukcdbxc7gbukr2gpeskfecbhe4pdq.py:856: in partition_0
+    buf9 = torch.ops.aten.linalg_cholesky_ex.default(buf8)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <OpOverload(op='aten.linalg_cholesky_ex', overload='default')>
+args = (<[AcceleratorError("HIP error: operation failed due to a previous error during capture\nSearch for `hipErrorStreamCap...ile with `TORCH_USE_HIP_DSA` to enable device-side assertions.\n") raised in repr()] Tensor object at 0x7fed86df4730>,)
+kwargs = {}
+
+    def __call__(self, /, *args: _P.args, **kwargs: _P.kwargs) -> _T:
+>       return self._op(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       torch.AcceleratorError: HIP error: operation not permitted when stream is capturing
+E       Search for `hipErrorStreamCaptureUnsupported' in https://rocm.docs.amd.com/projects/HIP/en/latest/index.html for more information.
+E       HIP kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing AMD_SERIALIZE_KERNEL=3
+E       Compile with `TORCH_USE_HIP_DSA` to enable device-side assertions.
+
+/opt/venv/lib/python3.11/site-packages/torch/_ops.py:819: AcceleratorError
+
+During handling of the above exception, another exception occurred:
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+    def test_compile_reduce_overhead_cuda():
+        f = torch.compile(lambda y: cholesky_qr(y), mode="reduce-overhead")
+        Y = torch.randn(4, 1024, 64, device="cuda")
+        for _ in range(3):
+>           Q = f(Y)
+                ^^^^
+
+tests/test_modes.py:163: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/venv/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py:953: in compile_wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+tests/test_modes.py:160: in <lambda>
+    f = torch.compile(lambda y: cholesky_qr(y), mode="reduce-overhead")
+/opt/venv/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py:1181: in _fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_functorch/aot_autograd.py:1148: in forward
+    return compiled_fn(full_args)
+           ^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py:357: in runtime_wrapper
+    all_outs = call_func_at_runtime_with_args(
+/opt/venv/lib/python3.11/site-packages/torch/_functorch/_aot_autograd/utils.py:134: in call_func_at_runtime_with_args
+    out = normalize_as_list(f(args))
+                            ^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py:1962: in __call__
+    return self.compiled_fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py:531: in wrapper
+    return compiled_fn(runtime_args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py:729: in inner_fn
+    outs = compiled_fn(args)
+           ^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/output_code.py:638: in __call__
+    return self.current_callable(inputs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/torchinductor_root/pn/cpnb7vrhny5oazkd3uk7anoukcdbxc7gbukr2gpeskfecbhe4pdq.py:1006: in call
+    (buf41,) = self.partitions[0](partition0_args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/compile_fx.py:1843: in run
+    return compiled_fn(new_inputs)  # type: ignore[arg-type]
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:388: in deferred_cudagraphify
+    return fn(inputs)
+           ^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/utils.py:3220: in run
+    out = model(new_inputs)
+          ^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:2033: in run
+    out = self._run(new_inputs, function_id)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:2203: in _run
+    return self.record_function(new_inputs, function_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:2240: in record_function
+    node = CUDAGraphNode(
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:1046: in __init__
+    self.recording_outputs: Optional[OutputType] = self._record(
+/opt/venv/lib/python3.11/site-packages/torch/_inductor/cudagraph_trees.py:1273: in _record
+    with (
+/opt/venv/lib/python3.11/site-packages/torch/cuda/graphs.py:268: in __exit__
+    self.cuda_graph.capture_end()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch.cuda.graphs.CUDAGraph object at 0x7fed87f31730>
+
+    def capture_end(self) -> None:
+        r"""End CUDA graph capture on the current stream.
+    
+        After ``capture_end``, ``replay`` may be called on this instance.
+    
+        Typically, you shouldn't call ``capture_end`` yourself.
+        Use :class:`~torch.cuda.graph` or :func:`~torch.cuda.make_graphed_callables`,
+        which call ``capture_end`` internally.
+        """
+>       super().capture_end()
+E       torch.AcceleratorError: HIP error: operation failed due to a previous error during capture
+E       Search for `hipErrorStreamCaptureInvalidated' in https://rocm.docs.amd.com/projects/HIP/en/latest/index.html for more information.
+E       HIP kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing AMD_SERIALIZE_KERNEL=3
+E       Compile with `TORCH_USE_HIP_DSA` to enable device-side assertions.
+
+/opt/venv/lib/python3.11/site-packages/torch/cuda/graphs.py:130: AcceleratorError
+=============================== warnings summary ===============================
+tests/test_modes.py: 14 warnings
+  /opt/venv/lib/python3.11/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_modes.py::test_compile_reduce_overhead_cuda
+  /opt/venv/lib/python3.11/site-packages/torch/_inductor/compile_fx.py:321: UserWarning: TensorFloat32 tensor cores for float32 matrix multiplication available but not enabled. Consider setting `torch.set_float32_matmul_precision('high')` for better performance.
+    warnings.warn(
+
+tests/test_modes.py::test_compile_reduce_overhead_cuda
+  /opt/venv/lib/python3.11/site-packages/torch/_inductor/lowering.py:1904: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+    check(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1 failed, 16 warnings in 6.16s
+### exit 1 tests/test_modes.py::test_compile_reduce_overhead_cuda
+### tests/test_modes.py::test_tf32_compensated_cuda
+.                                                                        [100%]
+1 passed in 11.76s
+### exit 0 tests/test_modes.py::test_tf32_compensated_cuda
+### tests/test_verify.py::test_verify_cuda_under_tf32_and_highest
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___________________ test_verify_cuda_under_tf32_and_highest ____________________
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_verify_cuda_under_tf32_and_highest():
+        old = torch.get_float32_matmul_precision()
+        try:
+            for prec in ("highest", "high"):
+                torch.set_float32_matmul_precision(prec)
+                Ys = torch.stack([_spectrum(512, 32, k, seed=i) for i, k in enumerate([1e2, 1e6, 1e9, 1e12])]).cuda()
+                Q = cholesky_qr(Ys, verify=True)
+                b = orthogonality_bound(Q)
+>               assert b.device.type == "cuda" and bool((b <= 1e-4).all())
+E               AssertionError: assert ('cpu' == 'cuda'
+E                 
+E                 - cuda
+E                 + cpu)
+
+tests/test_verify.py:294: AssertionError
+1 failed in 8.86s
+### exit 1 tests/test_verify.py::test_verify_cuda_under_tf32_and_highest
+### tests/test_verify.py::test_rocm_and_mps_checked_on_cpu
+.                                                                        [100%]
+1 passed in 1.22s
+### exit 0 tests/test_verify.py::test_rocm_and_mps_checked_on_cpu

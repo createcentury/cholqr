@@ -1,0 +1,47 @@
+........................................................................ [ 43%]
+............................................s........................... [ 87%]
+............sF.......                                                    [100%]
+=================================== FAILURES ===================================
+___________________ test_verify_cuda_under_tf32_and_highest ____________________
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+    def test_verify_cuda_under_tf32_and_highest():
+        old = torch.get_float32_matmul_precision()
+        try:
+            for prec in ("highest", "high"):
+                torch.set_float32_matmul_precision(prec)
+                Ys = torch.stack([_spectrum(512, 32, k, seed=i) for i, k in enumerate([1e2, 1e6, 1e9, 1e12])]).cuda()
+                Q = cholesky_qr(Ys, verify=True)
+                b = orthogonality_bound(Q)
+>               assert b.device.type == "cuda" and bool((b <= 1e-4).all())
+E               AssertionError: assert ('cpu' == 'cuda'
+E                 
+E                 - cuda
+E                 + cpu)
+
+tests/test_verify.py:294: AssertionError
+=============================== warnings summary ===============================
+tests/test_cholqr.py: 14 warnings
+  /opt/venv/lib/python3.11/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_cholqr.py::test_rcqr_compiles
+tests/test_cholqr.py::test_auto_compiles
+tests/test_cholqr.py::test_auto_compiles
+  /opt/venv/lib/python3.11/site-packages/torch/_inductor/lowering.py:1904: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+    check(
+
+tests/test_verify.py::test_verify_under_jit_trace_raises
+tests/test_verify.py::test_verify_under_jit_trace_raises
+  /opt/venv/lib/python3.11/site-packages/torch/jit/_trace.py:1000: DeprecationWarning: `torch.jit.trace` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+tests/test_verify.py::test_verify_under_jit_trace_raises
+  /opt/venv/lib/python3.11/site-packages/cholqr/core.py:208: TracerWarning: Converting a tensor to a Python boolean might cause the trace to be incorrect. We can't record the data flow of Python values, so this value will be treated as a constant in the future. This means that the trace might not generalize to other inputs!
+    if r > m:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_modes.py:96: needs 2 GPUs
+SKIPPED [1] tests/test_verify.py:275: needs MPS
+1 failed, 162 passed, 2 skipped, 2 deselected, 20 warnings in 41.92s

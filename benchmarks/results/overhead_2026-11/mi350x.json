@@ -1,0 +1,59 @@
+{
+ "device": "cuda",
+ "torch": "2.10.0+rocm7.1.1.gitd9556b05",
+ "hip": "7.1.52802",
+ "cholqr": "0.5.0",
+ "gpu": "AMD Instinct MI350X",
+ "precision": "highest",
+ "note": "reconstructed from overhead.log: bench_overhead.py raised torch.AcceleratorError (HIP error: unspecified launch failure) in torch.linalg.cholesky_ex at shape [8, 4096, 276] before writing its JSON; shapes [8, 4096, 276] and [64, 1024, 32] have no data",
+ "rows": [
+  {
+   "shape": [
+    1,
+    1024,
+    64
+   ],
+   "torch_qr_ms": 1.1872709728777409,
+   "ignore_ms": 0.7615373469889164,
+   "fallback_ms": 0.7981676608324051,
+   "compiled_ms": 0.5481075495481491,
+   "check_overhead_pct": 4.8100482515169185
+  },
+  {
+   "shape": [
+    1,
+    4096,
+    276
+   ],
+   "torch_qr_ms": 6.636756006628275,
+   "ignore_ms": 2.8152335435152054,
+   "fallback_ms": 2.8621889650821686,
+   "compiled_ms": 2.595198806375265,
+   "check_overhead_pct": 1.6679050189325695
+  },
+  {
+   "shape": [
+    16,
+    2048,
+    128
+   ],
+   "torch_qr_ms": 37.02258691191673,
+   "ignore_ms": 2.21532816067338,
+   "fallback_ms": 2.2553782910108566,
+   "compiled_ms": 1.7064455896615982,
+   "check_overhead_pct": 1.8078644531518417
+  },
+  {
+   "shape": [
+    40,
+    768,
+    210
+   ],
+   "torch_qr_ms": 165.61212623491883,
+   "ignore_ms": 13.647429645061493,
+   "fallback_ms": 13.724098913371563,
+   "compiled_ms": 11.406316421926022,
+   "check_overhead_pct": 0.5617854079783768
+  }
+ ]
+}

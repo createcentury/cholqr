@@ -1,0 +1,6 @@
+=== start 2026-11-11T22:09:39
+pytest_t27 exit 1
+killed-old-unthreaded-run
+pytest exit 137
+=== end 2026-11-11T22:18:01
+ALL_DONE

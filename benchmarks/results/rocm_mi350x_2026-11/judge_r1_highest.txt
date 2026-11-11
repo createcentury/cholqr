@@ -1,0 +1,10 @@
+== /workspace/out/r1_highest.jsonl: AMD Instinct MI350X 9.5 torch 2.10.0+rocm7.1.1.gitd9556b05 precision highest; runs 1632
+   eps_2/u medians: {'1024x64': 14.5, '1024x276': 16.3, '4096x64': 3.2, '4096x276': 3.9}
+   Theorem D violations: (a) 0/2522, (c) 0/2522, (b) 0/2246; D1 0/735
+   rho>=5 failures 0/2185; lam_hat<-2u failures 528/529; lam_hat>5u successes 2308/2308
+   a-priori pass-2 rule: 281/295
+   library default: orth max 2.1e-05; runs >= 1e-4: 0/1632
+   detector: caught 62/62; false alarms 1/782
+   first breakdown (geometric), scqr3: {'1024x64': '1e+07', '1024x276': '3e+06', '4096x64': '1e+08', '4096x276': '1e+07'}
+   first breakdown (geometric), cqr2: {'1024x64': '3e+04', '1024x276': '1e+04', '4096x64': '1e+05', '4096x276': '3e+04'}
+   verdicts: {'D1_fp32_class': 'PASS', 'D2_theoremD': 'PASS', 'D3_rules': 'PASS', 'D4_apriori': 'PASS', 'D5_library': 'PASS', 'D6_detector': 'PASS'}
