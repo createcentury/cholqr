@@ -137,21 +137,16 @@ can differ substantially from the range of the original higher-precision matrix,
 - **Cost for rank-deficient inputs.** If your inputs are routinely rank deficient (e.g. a sketch wider than the
   matrix rank), every such call takes the fallback: one host synchronization plus a Householder QR. Use
   `on_breakdown="ignore"` if you only need the range and not orthonormal extra columns.
-- **TF32:** if TF32 matmul is enabled (`torch.set_float32_matmul_precision("high")`, common in training scripts on Ampere and newer GPUs), the Gram products lose precision.
-  - Measured on an A100-SXM4-80GB (torch 2.7.1, 3072 x 210, ‖QᵀQ − I‖_F):
-
-    | cond(Y) | 1e1 | 1e3 | 4e3 | 1e4 | 1e6 | 1e8 |
-    |---|---|---|---|---|---|---|
-    | `scqr3`, highest | 1.5e-6 | 1.6e-6 | 1.6e-6 | 1.5e-6 | 2.4e-6 | breaks down |
-    | `scqr3`, TF32 | 1.4e-4 | 1.9e-4 | 1.9e-4 | 2.1e-4 | 2.4e-4 | 2.8e-4 |
-    | `robust`, highest | 1.2e-6 | 1.1e-6 | 1.6e-6 | 1.5e-6 | 1.6e-6 | 1.5e-6 |
-    | `robust`, TF32 | 1.8e-4 | 1.8e-4 | 2.0e-4 | 1.8e-4 | 1.8e-4 | 1.8e-4 |
-    | `cqr2`, highest | 1.6e-6 | 2.4e-6 | 2.4e-6 | 2.9e-6 | breaks down | breaks down |
-    | `cqr2`, TF32 | 1.9e-4 | 2.0e-3 | 6.8e-3 | breaks down | breaks down | breaks down |
-
-    TF32 costs about two orders of magnitude in orthogonality for every method, and `"cqr2"` loses accuracy from cond(Y) ~ 1e3 on.
-    This agrees with our earlier CPU emulation.
-  - `cholqr` warns in that case. Wrap the call with `torch.set_float32_matmul_precision("highest")` if you need full accuracy.
+- **TF32** (`torch.set_float32_matmul_precision("high")`, common in training scripts on Ampere and newer GPUs).
+  Plain TF32 Gram products have errors of ~3000-6700 u instead of ~5 u. Measured with 0.4-style plain products (device
+  sweep, 1632 runs per GPU, torch 2.8): scqr3 then never breaks down up to cond(Y) = 1e10, but the default's
+  orthogonality degrades to 1.7e-3 - 3.1e-3, 15-30% of runs exceed 1e-4, and the breakdown check cannot see it.
+  Since 0.5, cholqr **compensates** TF32 on Ampere-or-newer NVIDIA GPUs with the 3xTF32 scheme (exact split of each
+  operand into a TF32 part and a remainder; two or three TF32 GEMMs; no global setting is changed). Measured on an RTX
+  4090 (same sweep): Gram error 25-119 u, runs above 1e-4 down from 399 to 24 of 1632 (worst 7.3e-4), compiled path
+  unchanged. This is **not full FP32**: the breakdown point moves from ~1e7 to ~1e6 and the check catches only a few of
+  the remaining degraded runs. On consumer GPUs (RTX 4090) the compensated call is about 2x slower than with
+  `"highest"`. **If you need full accuracy, wrap the call with `torch.set_float32_matmul_precision("highest")`.**
 - Real dtypes only; complex inputs raise `TypeError`. Autograd works (gradients agree with Householder QR to ~1e-7 in tests). Runs on CUDA, CPU and Apple MPS.
 - Status: **experimental (0.x)**. The API may change. Issues and benchmarks on other GPUs are welcome.
 
@@ -231,7 +226,7 @@ The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (sp
 | NVIDIA GPUs | Ampere, Ada, Hopper, Blackwell (A40, A100, L4, RTX 4090/5090, RTX PRO 6000, H100) | device table above |
 | Apple GPUs | MPS | no FP64: the fallback uses Householder directly |
 | Input dtypes | float64, float32, bfloat16, float16, float8_e4m3fn | computation is FP32 (FP64 first pass with `robust=True`) |
-| Matmul precision | `highest`; `high` (TF32: compensated, see CHANGELOG) | `medium` may use bfloat16 products on some backends: not compensated |
+| Matmul precision | `highest` (full accuracy); `high` (TF32: partly compensated, see Accuracy) | `medium` may use bfloat16 products on some backends: not compensated |
 | Execution modes | eager, `torch.compile` (inductor), `torch.func.vmap`, `torch.export` (with `on_breakdown="ignore"`), autograd incl. double backward, `inference_mode`, deterministic algorithms (CPU), threads, spawned processes | the breakdown check is skipped under `torch.compile`, `vmap` and tracing |
 | Not yet verified | Turing/Volta GPUs (T4, V100), AMD ROCm, Intel XPU, TPU (PyTorch/XLA), FSDP/DTensor inputs, deterministic mode / CUDA graphs / second GPU on CUDA (tests exist, run only on GPU machines) | reports welcome |
 | Not supported | complex dtypes (raise `TypeError`), TorchScript | |

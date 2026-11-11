@@ -38,8 +38,10 @@
 - `lean/`: Lean 4 proofs of the exact-algebra results (shifted-pass spectrum, positive-definiteness criterion, the
   a-posteriori orthogonality bound of Fukaya et al. 2020 eq. 3.33); the floating-point layer is not formalized.
 - **TF32:** when TF32 is active on an Ampere-or-newer NVIDIA GPU, the Gram and forming products use the 3xTF32 scheme
-  (exact split into a TF32 part and a remainder; two or three TF32 GEMMs), restoring FP32-class accuracy without changing
-  global settings. Before, TF32 degraded orthogonality to ~1e-3 and the breakdown check could not catch it.
+  (exact split into a TF32 part and a remainder; two or three TF32 GEMMs) without changing global settings. Measured on an
+  RTX 4090: Gram error 25-119 u instead of 3000-6700 u; runs with orthogonality above 1e-4 down from 399 to 24 of 1632
+  (worst 7.3e-4). Not full FP32: the breakdown point moves from ~1e7 to ~1e6, the check catches few of the remaining
+  degraded runs, and on consumer GPUs the call is ~2x slower than with "highest". Use "highest" for full accuracy.
 - CI: Python 3.9-3.15, torch 2.1 to latest and nightly (Linux x86 and ARM), numpy 1 and 2, macOS, Windows.
 - Tests for execution modes: deterministic algorithms, inference_mode, vmap, double backward, default dtype float64,
   edge shapes, non-contiguous inputs, CUDA graph capture (with `on_breakdown="ignore"`), second GPU.
