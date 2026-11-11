@@ -1,0 +1,10 @@
+VALIDITY (TF32 active at 'high', inactive at 'highest'): OK
+H1: PASS  c3_scqr3 median sin_fl/cond = 2.73e-08 over 156/156 non-broken (target [1e-8, 1e-7])
+H2: PASS  c3_scqr3 sin_fl <= 3e-7 cond in 156/156 (need >= 98%); max sin_fl/cond = 1.47e-07
+H3: PASS  c3 sin_fl <= 3 x fp32 sin_fl in 156/156 (need >= 90%); ratio median 1.37, max 2.37
+H4: PASS  hardware/emulation sin_fl ratio in [1/3, 3] in 146/156 (need >= 90%); ratio median 1.23, range 1.16e-06-2.3
+H5: FAIL  c3_scqr3 residual max 0.000842 (<= 1e-5), median 0.000386 (<= 1e-6)
+H6: PASS  plain_scqr3 (control) median sin_fl/cond at cond <= 10^3.5 = 0.000115 over 48 (target [3e-5, 5e-4])
+H7: PASS  fp32_scqr3 sin_fl <= 3e-7 cond in 156/156 (need >= 98%); max 1.63e-07, median 3.27e-08
+H8: PASS  c3_scqr3 (default) orth_F <= 1e-4 in 149/156 (need >= 90%); max 0.000737, median 1.92e-05
+DECISION (FP32-like range of 0.5's 3xTF32 on RTX 4090 = VALID and H1 and H2 and H3): PASS
