@@ -291,7 +291,9 @@ def test_verify_cuda_under_tf32_and_highest():
             Ys = torch.stack([_spectrum(512, 32, k, seed=i) for i, k in enumerate([1e2, 1e6, 1e9, 1e12])]).cuda()
             Q = cholesky_qr(Ys, verify=True)
             b = orthogonality_bound(Q)
-            assert b.device.type == "cuda" and bool((b <= 1e-4).all())
+            # on ROCm the check runs on the CPU by design (see _check_device)
+            assert b.device.type == ("cpu" if getattr(torch.version, "hip", None) else "cuda")
+            assert bool((b <= 1e-4).all())
             for k in range(Q.shape[0]):
                 assert exact_err(Q[k].cpu()) <= 1e-4
     finally:

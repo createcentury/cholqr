@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cholqr"
-version = "0.5.0"
+version = "0.5.1"
 description = "Fast, compile-friendly shifted CholeskyQR3 for batched tall-skinny matrices in PyTorch"
 readme = "README.md"
 license = "MIT"

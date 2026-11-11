@@ -5,6 +5,8 @@ type: software
 authors:
   - family-names: Fukuda
     given-names: Soki
+    affiliation: "The University of Tokyo"
+    orcid: "https://orcid.org/0009-0005-7972-5649"
 version: 0.5.0
 date-released: 2026-11-12
 doi: 10.5281/zenodo.24144958

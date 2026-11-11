@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 (unreleased date - set at release)
 - **Fix: R under TF32.** With `return_r=True` and TF32 active, the accumulation of R used plain TF32 products, so R
   (not Q) had TF32-level accuracy (residual ||Y - QR|| ~ 4e-4 measured on an RTX 4090 at precision "high"). L^T D is now
   an elementwise column scaling and the product with the previous R uses the same 3xTF32 compensation as Q.
@@ -10,6 +10,29 @@
 - Documentation: the `cqr2` range is stated from the device-sweep measurements (first breakdown from cond(Y) ~ 3e3 for
   clustered spectra to 1e4-1e5 for geometric spectra; cond(Y) <~ 1e3 recommended), replacing the earlier, inconsistent
   4e3 / 1e4 / 3e4 figures. Higgins et al. citation year corrected (2025).
+- README: "Which settings to use" table (incl. distributed training), `method="auto"` in the quick start, Lean section
+  updated for D1.
+- **Documentation: wide matrices.** The 0.195 last-pass threshold was validated for r <= 276. A pre-registered test at
+  r = 512 / 1024 (`benchmarks/results/thresh_wide_2026-11/`) missed 1 of 69 / 6 of 84 degraded runs (orthogonality
+  1.05e-4 to 1.8e-4 in all of them) with 0 false alarms. The threshold is unchanged; docstring, `docs/accuracy.md` and
+  `docs/how-it-works.md` now recommend `verify=True` for wide matrices that need a guaranteed 1e-4.
+- **ROCm (AMD Instinct MI350X, torch 2.10 + ROCm 7.1.1)** in `docs/compatibility.md` and `docs/devices.md`: device
+  sweep (all registered checks pass; default orthogonality < 1e-4 in 1632/1632 runs; detector 62/62, 1 false alarm),
+  `verify=True` with 0 false acceptances, cost of the check and speed vs `torch.linalg.qr`. Known upstream issues
+  documented: batched `torch.linalg.cholesky_ex` with r >= 257 fails with "HIP error: unspecified launch failure"
+  (single matrices and r <= 256 work; not caught by cholqr), and `cholesky_ex` cannot be captured in a HIP graph.
+- Tests: the CUDA-graph and `reduce-overhead` capture tests are skipped on ROCm; the TF32/highest `verify=True` test
+  accepts the CPU-side bound on ROCm (by design).
+- `docs/verify.md`: measured CUDA cost of `verify=True` (RTX 4090, A100).
+- `docs/powersgd.md`: keeping fallback decisions identical on every rank in distributed training (no `"raise"`;
+  all-reduce the bad flag with `MAX` before branching). Docstring: the checks bound orthogonality only, not the range.
+- `docs/accuracy.md`: breakdown-onset range consistent with the measurements; the first failed factorization was always
+  in pass 2.
+- `lean/`: lemma D1 (contraction into the next pass), with the FP32 normalisation rounding as hypotheses.
+- `CITATION.cff`: affiliation and ORCID.
+- Benchmarks (results and pre-registrations in `benchmarks/`): `verify=True` cost, downstream effects of orthogonality
+  loss, 3xTF32 range on an RTX 4090, compiled-loop cost, forming error, threshold at r = 512 / 1024, MI350X;
+  `device_sweep.py` works with torch_xla's unreduced `amin`/`amax`.
 
 ## 0.5.0 (2026-11-12)
 - Documentation moved from the README into `docs/` (how it works, accuracy, `verify=True`, devices, compatibility,

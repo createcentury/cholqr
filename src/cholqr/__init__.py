@@ -10,4 +10,4 @@ from .core import cholesky_qr, orthonormal_basis, orthogonality_bound
 from ._diagnose import diagnose
 
 __all__ = ["cholesky_qr", "orthonormal_basis", "orthogonality_bound", "diagnose"]
-__version__ = "0.5.0"
+__version__ = "0.5.1"

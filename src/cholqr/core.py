@@ -31,6 +31,8 @@ _ON_BREAKDOWN = ("fallback", "warn", "raise", "ignore")
 # Cholesky factor; c = 18-33 measured for FP32 Gram orders). Flagging Lmin < sqrt(64 u / 1e-4) = 0.195 targets a
 # final orthogonality of 1e-4 with a 2x safety factor on c. Pre-registered check on unseen data: caught 155/155 (CPU) and
 # 56/56 (Apple GPU) runs with orthogonality > 1e-4, false alarms 4/1931 and 0/760; an earlier draft value of 1e-2 caught 65/155.
+# Validated for r <= 276. Wider (pre-registered, benchmarks/results/thresh_wide_2026-11/): missed 1/69 degraded runs at
+# r = 512 and 6/84 at r = 1024 (orthogonality 1.05e-4 to 1.8e-4), 0 false alarms; the threshold is unchanged.
 _BREAKDOWN_LMIN = math.sqrt(64 * 2.0 ** -24 / 1e-4)
 _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A100 measurements, see README)
 
@@ -153,6 +155,10 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     near its limit, or numerically rank deficient, e.g. a zero column). Both tests reuse the r x r
     factors already computed; they add no Gram product. This is how FP32 ``scqr3`` fails beyond cond(Y) ~ 1e6-1e7:
     without the check the result silently loses orthogonality (||Q^T Q - I||_F ~ 20-90).
+
+    The ``0.195`` threshold was validated for r <= 276 columns. For wider matrices it misses a few degraded runs:
+    in a pre-registered test it missed 1 of 69 at r = 512 and 6 of 84 at r = 1024 (orthogonality 1.05e-4 to 1.8e-4
+    in all missed runs), with no false alarms. For wide matrices that need a guaranteed 1e-4, use ``verify=True``.
 
     Args:
         Y: real tensor of shape (..., m, r) with r <= m.

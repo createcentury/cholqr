@@ -6,6 +6,10 @@ import pytest
 import torch
 from cholqr import cholesky_qr
 
+# On ROCm, torch.linalg.cholesky_ex cannot be captured in a HIP graph ("operation not permitted when stream is
+# capturing", MI350X, torch 2.10 + ROCm 7.1.1), and a failed capture poisons the context for later tests.
+_HIP = bool(getattr(torch.version, "hip", None))
+
 
 def _ill(m=256, r=16, kappa=1e9, seed=0):
     g = torch.Generator().manual_seed(seed)
@@ -83,6 +87,7 @@ def test_non_contiguous():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+@pytest.mark.skipif(_HIP, reason="cholesky_ex is not capturable in a HIP graph")
 def test_cuda_graph_capture_with_ignore():
     Y = torch.randn(4, 1024, 64, device="cuda")
     cholesky_qr(Y, on_breakdown="ignore")                            # warm up
@@ -156,6 +161,7 @@ def test_deterministic_mode_cuda():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+@pytest.mark.skipif(_HIP, reason="cholesky_ex is not capturable in a HIP graph")
 def test_compile_reduce_overhead_cuda():
     f = torch.compile(lambda y: cholesky_qr(y), mode="reduce-overhead")
     Y = torch.randn(4, 1024, 64, device="cuda")

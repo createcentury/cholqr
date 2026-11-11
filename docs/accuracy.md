@@ -45,6 +45,11 @@ can differ substantially from the range of the original higher-precision matrix,
   - (`"cqr2"` near its limit on some spectra, which used to degrade to ≈ 1e-2 without a failed factorization, is now
     caught by the last-pass threshold described above.)
   - Custom `passes` (e.g. `passes=1`): the check is calibrated for the default pass counts only.
+  - **Wide matrices (r > 276).** The 0.195 last-pass threshold was validated for up to 276 columns. In a
+    pre-registered test at 4096 x 512 and 8192 x 1024 (`benchmarks/results/thresh_wide_2026-11/`) it missed
+    1 of 69 degraded runs at r = 512 and 6 of 84 at r = 1024; every missed run had orthogonality between 1.05e-4 and
+    1.8e-4. There were no false alarms (0/546, 0/495). The threshold is unchanged; if wide matrices must stay below
+    1e-4, use `verify=True` ([details](verify.md)).
 - **Cost for rank-deficient inputs.** If your inputs are routinely rank deficient (e.g. a sketch wider than the
   matrix rank), every such call takes the fallback: one host synchronization plus a Householder QR. Use
   `on_breakdown="ignore"` if you only need the range and not orthonormal extra columns.

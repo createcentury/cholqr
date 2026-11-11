@@ -35,6 +35,10 @@ fallback runs; median of 50 calls; torch 2.8, CUDA 12.8; `benchmarks/bench_overh
 | RTX 5090 | +7% | +2% | +3% | +1% | +0% | 16.9x |
 | RTX PRO 6000 Blackwell | +7% | +2% | +2% | +1% | +0% | 18.5x |
 | L4 | +3% | +2% | +1% | +0% | +0% | 6.1x |
+| AMD Instinct MI350X (torch 2.10, ROCm 7.1.1) | +5% | +2% | +2% | +1% | n/a¹ | 12.1x |
+
+¹ Not measured: batched `torch.linalg.cholesky_ex` with r > 256 fails on this ROCm stack (see
+[compatibility](compatibility.md#rocm-known-issues)).
 
 The check costs one host synchronization (0.02-0.04 ms on these GPUs). On Apple GPUs (MPS) a synchronization is more
 expensive: up to +90% for a single small matrix, about 0% for large batches. For a single small matrix
@@ -58,9 +62,13 @@ run with orthogonality > 1e-4 (false alarms in parentheses).
 | NVIDIA RTX PRO 6000 Blackwell (2.8) | 5.2 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 813) |
 | NVIDIA L4 (2.8) | 5.5 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 57 / 57 (3 of 816) |
 | NVIDIA T4 (2.14, Colab) | 7.8 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 56 / 56 (3 of 817) |
+| AMD Instinct MI350X (2.10, ROCm 7.1.1) | 16.3 / 3.9 | 1e7 / 3e4 | 1632 / 1632 | 62 / 62 (1 of 782) |
 
 The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
 `python -m cholqr` reports the same Gram-error class for a random well-conditioned matrix, so its numbers are smaller.
+On the MI350X, `verify=True` was also checked on 1196 matrices (small set, precision "highest" and "high"): 0 false
+acceptances (no certified Q had exact orthogonality above 1e-4, and the bound was never below the exact error); with the fallback every
+returned Q had orthogonality ≤ 8.7e-5.
 T4 (Turing) has no TF32, so `"high"` gives the same results as `"highest"` there (and no compensation is applied).
 Not measured yet: NVIDIA A100 (run incomplete). Google TPU v5e (torch_xla 2.8): a sanity check runs with 0
 mismatches, but the full sweep has not run (the benchmark assumed a scalar `info` from `cholesky_ex`); not a target yet. Results from other hardware are welcome (`benchmarks/device_sweep.py`).

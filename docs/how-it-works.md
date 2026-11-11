@@ -51,5 +51,8 @@ Shifted CholeskyQR3 (Fukaya et al., 2020) with four implementation choices:
 4. **`cholesky_ex` with a per-matrix `torch.where` fallback.** The routine compiles with zero graph breaks. The
    `info` flags of these factorizations, plus the smallest diagonal entry of the last pass's factor, are the breakdown
    test of 0.5. Reading them is the only host synchronization, and it happens in eager mode only.
+   The diagonal threshold (0.195) was validated for up to 276 columns; at 512 and 1024 columns it missed a few runs
+   with orthogonality just above 1e-4 (up to 1.8e-4; see [accuracy](accuracy.md)). Use `verify=True` for a
+   guarantee on wide matrices.
 
 [Back to README](../README.md)
