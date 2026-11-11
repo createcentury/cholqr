@@ -63,3 +63,24 @@ def test_3xtf32_gram_truncating_emulation():
     G3 = trunc(Ah).double().mT @ trunc(Ah).double() + (M + M.mT)
     err = ((G3 - exact).abs() / (Q.double().abs().mT @ Q.double().abs())).max()
     assert err <= 5 * 2.0 ** -22 * 1.01
+
+
+def test_r_products_use_compensated_mm_under_tf32(monkeypatch):
+    """Regression (0.5.1): with TF32 active, the R accumulation must go through _mm (3xTF32), like Q.
+    Before the fix, F @ R was a plain @, so R had TF32-level accuracy under precision "high" (Q was unaffected)."""
+    import torch
+    from cholqr import core
+    calls = []
+    real_mm = core._mm
+
+    def spy(A, B, tf32):
+        calls.append((tuple(A.shape), tuple(B.shape), tf32))
+        return real_mm(A, B, False)          # exact FP32 on CPU; only the routing is tested
+
+    monkeypatch.setattr(core, "_mm", spy)
+    monkeypatch.setattr(core, "_tf32_active", lambda Q: True)
+    Y = torch.randn(3, 256, 16, generator=torch.Generator().manual_seed(0))
+    Q, R = core.cholesky_qr(Y, return_r=True)
+    rr = [c for c in calls if c[0][-2:] == (16, 16) and c[1][-2:] == (16, 16)]
+    assert len(rr) >= 2 and all(c[2] for c in rr)       # r x r products of the passes after the first
+    assert torch.allclose(Q @ R, Y, rtol=1e-4, atol=1e-4)

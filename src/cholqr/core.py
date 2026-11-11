@@ -340,8 +340,10 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
         if return_r:
             # Q_before = Q_scaled * d  and  Q_scaled = Q_after @ L^T (if the pass succeeded)
             D = torch.diag_embed(d.squeeze(-2))
-            F = torch.where(ok, L.mT @ D, D)
-            R = F if R is None else F @ R
+            # L^T D is a column scaling: done elementwise (no GEMM, so no TF32 rounding); the product with the
+            # previous R goes through _mm so that it is 3xTF32-compensated like Q (it was a plain @ before 0.5.1)
+            F = torch.where(ok, L.mT * d, D)
+            R = F if R is None else _mm(F, R, _tf32_active(Q))
     dt = Y.dtype if out_dtype is None else out_dtype
     Q = Q.float().to(dt)
     if return_r and R is None:                                           # passes=0
