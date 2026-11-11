@@ -131,3 +131,37 @@ def test_torch_export_ignore():
     except Exception as e:                       # report, do not hide
         pytest.skip(f"torch.export unsupported here: {type(e).__name__}: {str(e)[:120]}")
     assert _orth(ep.module()(Y)) < 1e-4
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+def test_deterministic_mode_cuda():
+    old = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        Y = torch.stack([_ill(seed=0), _ill(kappa=1e2, seed=1)]).cuda()
+        Q, R = cholesky_qr(Y, return_r=True)
+        assert _orth(Q.cpu()) < 1e-4
+    finally:
+        torch.use_deterministic_algorithms(old)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+def test_compile_reduce_overhead_cuda():
+    f = torch.compile(lambda y: cholesky_qr(y), mode="reduce-overhead")
+    Y = torch.randn(4, 1024, 64, device="cuda")
+    for _ in range(3):
+        Q = f(Y)
+    torch.cuda.synchronize()
+    assert _orth(Q.cpu()) < 1e-4
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA only")
+def test_tf32_compensated_cuda():
+    old = torch.get_float32_matmul_precision()
+    torch.set_float32_matmul_precision("high")
+    try:
+        Y = _ill(m=4096, r=276, kappa=1e5).cuda()
+        Q = cholesky_qr(Y)
+        assert _orth(Q.cpu()) < 1e-4
+    finally:
+        torch.set_float32_matmul_precision(old)
