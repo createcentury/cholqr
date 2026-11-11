@@ -1,43 +1,44 @@
 # Changelog
 
 ## 0.5.0 (unreleased)
-- **Breakdown detection and fallback.** Beyond its range (FP32 `scqr3`: cond(Y) ~ 1e6–1e7), CholeskyQR used to return
-  a non-orthonormal Q without any error. In every case we measured, a Cholesky factorization in a later pass failed;
-  0.4 skipped that pass silently. Matrices are now flagged when any pass's `cholesky_ex` fails, or when the last
-  pass's Cholesky factor has a diagonal entry below 1e-2 (numerically rank-deficient input, e.g. zero columns). The
-  flags reuse the r x r factors, so there is no extra Gram product.
+- **Breakdown detection and fallback (new default).** Beyond its range (FP32 `scqr3`: cond(Y) about 1e7; `cqr2`: about
+  3e4), CholeskyQR used to return a non-orthonormal Q without any error. A matrix is now flagged when a pass's
+  `cholesky_ex` fails, when its Cholesky factor has a non-finite diagonal, or when the last pass's Cholesky factor has a
+  diagonal entry below 0.195. The last test catches gradual loss of orthogonality without a failed factorization, which
+  occurs for `cqr2` near its limit. A pass on X leaves orthogonality of about c·u/Lmin² (c = 18-33 measured for FP32
+  Gram orders), and 0.195 = sqrt(64 u / 1e-4) targets 1e-4 with a 2x margin on c. In a pre-registered validation on
+  data not used to choose it, the threshold flagged every run whose orthogonality exceeded 1e-4 (155/155 on CPU,
+  56/56 on an Apple GPU) with 4/1931 and 0/760 false alarms; an earlier draft value of 1e-2 caught 65/155.
+  All tests reuse the r x r factors; there is no extra Gram product.
   - New argument `on_breakdown`: `"fallback"` (default) recomputes only the flagged matrices, first with an FP64
     first pass and then with Householder QR; `"warn"`; `"raise"` (`torch.linalg.LinAlgError`); `"ignore"` (0.4
     behaviour).
-  - Every option except `"ignore"` costs one host synchronization per call in eager mode. Under `torch.compile` the
-    check is skipped, so compiled graphs are unchanged.
+  - **Behaviour change:** every option except `"ignore"` costs one host synchronization per call in eager mode
+    (measured +0-7% on NVIDIA GPUs, up to +90% for a single small matrix on Apple GPUs). The synchronization also means
+    the default cannot be captured in a raw CUDA graph; use `on_breakdown="ignore"` or `torch.compile` there.
+  - Under `torch.compile` the check is skipped, so compiled graphs are unchanged.
   - Inputs inside the range give bit-identical results to 0.4 (checked for Q and R, all methods).
-  - Not caught: gradual loss of orthogonality without a failed factorization (rcqr above ~1e8, cqr2 near its
-    limit on some spectra, custom `passes`). See the README.
   - Exactly rank-deficient inputs (zero columns) now get an orthonormal Q with the default.
-  - Last-pass threshold derived from the per-pass bound (orthogonality ~ c u / Lmin^2, c measured 18-33 for FP32 Gram
-    orders): Lmin < sqrt(64 u / 1e-4) = 0.195. In a pre-registered check on unseen data it flagged 155/155 (CPU) and
-    56/56 (Apple GPU) runs whose orthogonality exceeded 1e-4, with false alarms 4/1931 and 0/760. A first draft with 1e-2
-    caught 65/155. In particular, cqr2's gradual loss near its limit (no failed factorization) is now repaired.
+  - Not caught: gradual loss of orthogonality of `"rcqr"` above cond ~1e8, and custom `passes` (the threshold is
+    calibrated for the default pass counts; e.g. `robust=True, passes=1` is judged with the FP32 threshold).
 - **Fix:** FP32 inputs with entries above ~1e19 overflowed the first column-norm computation and returned Q = 0.
   Columns whose norm overflows are now divided by their maximum first (branch-free; results for other inputs are
   unchanged). This applies to all methods, including the pre-scaling of `rcqr`.
 - **Fix:** `passes=0, return_r=True` raised `AttributeError`; R is now the identity.
-- `contrib.powersgd` passes `on_breakdown="ignore"` because it has its own orthogonality check (one host sync per
-  call, as before).
 - **Fix:** a factorization whose Cholesky factor has a non-finite diagonal now counts as failed even if `cholesky_ex`
-  reports success (defensive; cheap r-element check).
+  reports success (observed once on an RTX 4090 with torch 2.8).
 - **Fix:** the fallback merge works for every dtype (it failed for float8 inputs).
 - **Compatibility:** torch 2.1-2.3 work again (`torch.compiler.is_compiling` fallback; `dtype.is_complex` under Dynamo).
   0.4.0 declared `torch>=2.1` but failed on torch < 2.3. On torch < 2.3, compiling `method="rcqr"` hits an Inductor bug.
-- `cholqr.diagnose()` / `python -m cholqr.diagnose`: measures, in about a second, the Gram error class (FP32 vs TF32), the
+- `contrib.powersgd` passes `on_breakdown="ignore"` because it has its own orthogonality check.
+- `cholqr.diagnose()` / `python -m cholqr`: measures in a few seconds the Gram error class (FP32 vs TF32), the
   breakdown points, the default's orthogonality, robust availability and timing on the current device.
-- `benchmarks/device_sweep.py`: instrumented sweep that logs every rounding term per pass (used for the device tables).
+- `benchmarks/device_sweep.py`, `benchmarks/bench_overhead.py`: the scripts behind the README tables.
 - `lean/`: Lean 4 proofs of the exact-algebra results (shifted-pass spectrum, positive-definiteness criterion, the
-  a-posteriori orthogonality bound); the floating-point layer is not formalized.
+  a-posteriori orthogonality bound of Fukaya et al. 2020 eq. 3.33); the floating-point layer is not formalized.
 - CI: tests on Python 3.9-3.13 with torch 2.1 to latest (Linux), plus macOS and Windows.
-- README: measured position of the FP32 cliff (QRBOUND sweep), why the Fukaya et al. guarantee does not cover FP32
-  at these sizes, and a caution on power-iterated sketches.
+- README: measured FP32 breakdown points and device table, cost of the check, why the Fukaya et al. guarantee does
+  not cover FP32 at these sizes, a caution on power-iterated sketches.
 
 ## 0.4.0 (2026-11-08)
 - **Faster Gram products.** For m >= 2048 rows, Q^T Q is now computed with a manual split-K: the m rows are chunked

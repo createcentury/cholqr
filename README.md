@@ -82,14 +82,14 @@ Run `python benchmarks/bench_qr.py --compile` on your GPU to measure your own sh
 
 ## How
 
-Shifted CholeskyQR3 (Fukaya et al., 2020) with three implementation choices:
+Shifted CholeskyQR3 (Fukaya et al., 2020) with four implementation choices:
 
 1. **Split-K Gram products (v0.4).** For m >= 2048, the Gram product Q^T Q is computed as a batched GEMM over
    256-row chunks plus a sum. cuBLAS otherwise runs this small-output, long-reduction GEMM almost serially (A100:
    1.13 ms -> 0.08 ms for 4 x 6144 x 8 fp32). Summing shorter partial products also improves fp32 accuracy.
-1. **Column scaling before every Gram product.** The shift is scale invariant. If a first-pass column norm overflows in FP32, that column is first divided by its maximum (branch-free; other columns are untouched, so results are bit-identical otherwise). Q is then correct for any finite input. R overflows when the true column norm exceeds the FP32 maximum, because it is not representable. Fixed in 0.5: before, entries above ~1e19 gave a zero Q.
-2. **Explicit r x r triangular inverse applied as one batched GEMM.** This replaces a slow triangular solve over m rows.
-3. **`cholesky_ex` with a per-matrix `torch.where` fallback.** The routine compiles with zero graph breaks. The
+2. **Column scaling before every Gram product.** The shift is scale invariant. If a first-pass column norm overflows in FP32, that column is first divided by its maximum (branch-free; other columns are untouched, so results are bit-identical otherwise). Q is then correct for any finite input. R overflows when the true column norm exceeds the FP32 maximum, because it is not representable. Fixed in 0.5: before, entries above ~1e19 gave a zero Q.
+3. **Explicit r x r triangular inverse applied as one batched GEMM.** This replaces a slow triangular solve over m rows.
+4. **`cholesky_ex` with a per-matrix `torch.where` fallback.** The routine compiles with zero graph breaks. The
    `info` flags of these factorizations, plus the smallest diagonal entry of the last pass's factor, are the breakdown
    test of 0.5. Reading them is the only host synchronization, and it happens in eager mode only.
 
@@ -126,13 +126,13 @@ can differ substantially from the range of the original higher-precision matrix,
   - The final low-rank update differs from an FP64 Householder reference by at most 7.6×10⁻⁵ (relative).
   - Sketches computed in bf16 are typically well inside the default range, because bf16 rounding caps their effective condition number.
 - Exactly rank-deficient or zero inputs (including zero columns) are flagged as breakdowns. With the default they
-  are recomputed by Householder QR, so Q has orthonormal columns and Y = Q R still holds (R then has zero diagonal
+  are recomputed by Householder QR, so Q has orthonormal columns and Y = Q R still holds (R then has numerically zero diagonal
   entries). With `on_breakdown="ignore"` they return finite outputs that are not orthonormal (0.4 behaviour).
 - **What the check does not catch.** It detects failed Cholesky factorizations and numerically rank-deficient
   last-pass inputs. It does not catch gradual loss of orthogonality:
   - `"rcqr"` above cond(Y) ~ 1e8: ≈ 3e-4 at 1e9.
   - (`"cqr2"` near its limit on some spectra, which used to degrade to ≈ 1e-2 without a failed factorization, is now
-    caught by the last-pass threshold below.)
+    caught by the last-pass threshold described above.)
   - Custom `passes` (e.g. `passes=1`): the check is calibrated for the default pass counts only.
 - **Cost for rank-deficient inputs.** If your inputs are routinely rank deficient (e.g. a sketch wider than the
   matrix rank), every such call takes the fallback: one host synchronization plus a Householder QR. Use
@@ -166,17 +166,17 @@ Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 
   (singular values σᵢ/√(σᵢ²+s)); a positive-definiteness criterion for the shifted computed Gram matrix; and the
   a-posteriori orthogonality bound ‖QᵀQ − I‖ ≤ (s + e)‖L⁻¹‖² (+ a forming term). The last one is the bound of Fukaya et
   al. (2020, eq. 3.33), restated with every rounding term collected in e.
-- **Measured (pre-registered experiments; details in the technical note):** where FP32 CholeskyQR breaks for several
+- **Measured (pre-registered experiments; scripts in `benchmarks/`, a technical note is in preparation):** where FP32 CholeskyQR breaks for several
   spectra and sizes; that the bound holds with the measured rounding terms and no safety margin; that the breakdown
   check flags every run whose orthogonality exceeded 1e-4 in validation data it was not tuned on; how inputs in
   bfloat16 / float16 / float8 / float64 behave; and the behaviour on several devices (table below).
 - **Not covered:** the floating-point layer is not formalized; devices and settings not in the table; `torch.compile`
   (the check is skipped there); gradual loss of orthogonality for `"rcqr"` and custom `passes`.
 
-Check your own device in about a second:
+Check your own device in a few seconds:
 
 ```bash
-python -m cholqr.diagnose            # cuda, then mps, then cpu;  --full adds 4096 x 276
+python -m cholqr            # cuda, then mps, then cpu;  --full adds 4096 x 276
 ```
 
 It reports the Gram-product error class (FP32 or TF32), the condition numbers where `scqr3` / `cqr2` break, whether
@@ -199,12 +199,26 @@ The check costs one host synchronization (0.02-0.04 ms on these GPUs). On Apple 
 expensive: up to +90% for a single small matrix, about 0% for large batches. For a single small matrix
 `torch.linalg.qr` is faster than any CholeskyQR, which is what `method="auto"` uses.
 
-<!-- DEVICE TABLE: filled from the device sweep (benchmarks/device_sweep.py) -->
-| device | Gram error ε/u (FP32) | first breakdown, scqr3 / cqr2 (1024 x 64, geometric) | checks |
-|---|---|---|---|
-| Apple M4 CPU | 27–31 (m 1024), 5–6 (m 4096) | pending | all pass |
-| Apple M4 GPU (MPS) | 27–30 (m 1024), 5–6 (m 4096) | pending | all pass; the TF32 setting has no effect |
-| NVIDIA (several) | pending | pending | pending |
+Device sweep (`benchmarks/device_sweep.py`; FP32 inputs, true FP32 matmul; geometric, power-law, spike, cluster, linear
+and staircase spectra; condition numbers 1e2-1e10 in half-decades; 2 draws; scqr3 and cqr2). ε/u is the median Gram
+error of pass 2 in units of u = 2^-24 (m = 1024 / 4096, r = 276); "breaks at" is the smallest condition number of the grid
+(geometric spectrum, 4096 x 276) where a factorization fails with `on_breakdown="ignore"`. Checks = the a-posteriori
+bound holds with measured terms; the default returns ‖QᵀQ − I‖ < 1e-4 in every run; the last-pass threshold flags every
+run with orthogonality > 1e-4 (false alarms in parentheses).
+
+| device (torch) | ε/u | breaks at: scqr3 / cqr2 | default orthogonality < 1e-4 | flagged / degraded (false alarms) |
+|---|---|---|---|---|
+| Apple M4 CPU (2.15) | 30.6 / 6.0 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (2 of 753) |
+| Apple M4 GPU, MPS (2.15) | 30.4 / 5.5 | 1e7 / 3e4 | 1632 / 1632 | 61 / 61 (2 of 761) |
+| NVIDIA H100 80GB HBM3 (2.8) | 5.1 / 5.2 | 1e7 / 3e4 | 1632 / 1632 | 58 / 58 (2 of 809) |
+| NVIDIA A40 (2.8) | 4.1 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 58 / 58 (4 of 819) |
+| NVIDIA RTX 4090 (2.8) | 4.1 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 58 / 58 (4 of 818) |
+| NVIDIA RTX 5090 (2.8) | 5.1 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 815) |
+| NVIDIA RTX PRO 6000 Blackwell (2.8) | 5.2 / 5.3 | 1e7 / 3e4 | 1632 / 1632 | 60 / 60 (1 of 813) |
+| NVIDIA L4 (2.8; 1352 of 1632 runs) | 5.5 / 5.4 | 1e7 / 3e4 | 1352 / 1352 | 42 / 42 (2 of 680) |
+
+The Apple numbers are larger at m = 1024 because that size uses a plain GEMM (split-K starts at m = 2048).
+`python -m cholqr` reports the same Gram-error class for a random well-conditioned matrix, so its numbers are smaller.
 
 ## `method="auto"`
 

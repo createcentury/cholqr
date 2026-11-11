@@ -20,13 +20,13 @@ _ON_BREAKDOWN = ("fallback", "warn", "raise", "ignore")
 # Last-pass test. A CholeskyQR pass on X leaves orthogonality ~ c u / Lmin^2 (Lmin = smallest diagonal entry of its
 # Cholesky factor; c = 18-33 measured for FP32 Gram orders). Flagging Lmin < sqrt(64 u / 1e-4) = 0.195 targets a
 # final orthogonality of 1e-4 with a 2x safety factor on c. Pre-registered check on unseen data: caught 155/155 (CPU) and
-# 56/56 (Apple GPU) runs with orthogonality > 1e-4, false alarms 4/1931 and 0/760; the 0.5.0 value 1e-2 caught 65/155.
+# 56/56 (Apple GPU) runs with orthogonality > 1e-4, false alarms 4/1931 and 0/760; an earlier draft value of 1e-2 caught 65/155.
 _BREAKDOWN_LMIN = math.sqrt(64 * 2.0 ** -24 / 1e-4)
 _AUTO_QR_MAX_R = 64   # single matrices with r <= this go to torch.linalg.qr (A100 measurements, see README)
 
 
 _GRAM_CHUNK = 256
-_GRAM_SPLITK_MIN_ROWS = 2048   # below this the plain GEMM is used (A100 A/B, see lowrank-muon dispatch results)
+_GRAM_SPLITK_MIN_ROWS = 2048   # below this the plain GEMM is used (A100 A/B measurements)
 
 
 def _gram(Q: torch.Tensor) -> torch.Tensor:

@@ -22,3 +22,6 @@ Homepage = "https://github.com/createcentury/cholqr"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cholqr"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "CHANGELOG.md", "LICENSE", "CITATION.cff", "pyproject.toml"]

@@ -1,7 +1,7 @@
-"""How does cholqr behave on THIS device and THESE settings? (about a minute; torch only)
+"""How does cholqr behave on THIS device and THESE settings? (a few seconds; torch only)
 
-    python -m cholqr.diagnose            # default device: cuda > mps > cpu
-    python -m cholqr.diagnose cpu --full # also the 4096 x 276 breakdown sweep
+    python -m cholqr            # default device: cuda > mps > cpu
+    python -m cholqr cpu --full # also the 4096 x 276 breakdown sweep
 
 Reports the measured Gram-product error (eps_2/u; TF32 shows up as eps_2/u >> 100), the first condition number at
 which FP32 scqr3 / cqr2 break down without the check (on_breakdown="ignore"), whether the default (check + fallback)
@@ -155,6 +155,11 @@ def _print(d: dict) -> None:
     print(f"(diagnose took {d['runtime_s']:.1f} s)")
 
 
+def _main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    args = [a for a in argv if not a.startswith("--")]
+    diagnose(args[0] if args else None, quick="--full" not in argv, verbose=True)
+
+
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    diagnose(args[0] if args else None, quick="--full" not in sys.argv, verbose=True)
+    _main()

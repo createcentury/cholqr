@@ -1,0 +1,80 @@
+{
+ "device": "cuda",
+ "torch": "2.8.0+cu128",
+ "cholqr": "0.5.0",
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+ "rows": [
+  {
+   "shape": [
+    1,
+    1024,
+    64
+   ],
+   "torch_qr_ms": 0.29229302890598774,
+   "ignore_ms": 0.3995141014456749,
+   "fallback_ms": 0.426624552346766,
+   "compiled_ms": 0.25597913190722466,
+   "check_overhead_pct": 6.78585581910367
+  },
+  {
+   "shape": [
+    1,
+    4096,
+    276
+   ],
+   "torch_qr_ms": 2.1341803949326277,
+   "ignore_ms": 1.0872804559767246,
+   "fallback_ms": 1.1067850282415748,
+   "compiled_ms": 0.9780819527804852,
+   "check_overhead_pct": 1.7938860353494457
+  },
+  {
+   "shape": [
+    16,
+    2048,
+    128
+   ],
+   "torch_qr_ms": 9.636280010454357,
+   "ignore_ms": 0.9074006229639053,
+   "fallback_ms": 0.9260535007342696,
+   "compiled_ms": 0.8580865105614066,
+   "check_overhead_pct": 2.055638633951684
+  },
+  {
+   "shape": [
+    40,
+    768,
+    210
+   ],
+   "torch_qr_ms": 34.539164043962955,
+   "ignore_ms": 1.8518115393817425,
+   "fallback_ms": 1.8681460060179234,
+   "compiled_ms": 1.7934395000338554,
+   "check_overhead_pct": 0.8820804001272498
+  },
+  {
+   "shape": [
+    8,
+    4096,
+    276
+   ],
+   "torch_qr_ms": 16.891130013391376,
+   "ignore_ms": 4.180975025519729,
+   "fallback_ms": 4.200078547000885,
+   "compiled_ms": 4.14903205819428,
+   "check_overhead_pct": 0.45691546504231795
+  },
+  {
+   "shape": [
+    64,
+    1024,
+    32
+   ],
+   "torch_qr_ms": 9.851888520643115,
+   "ignore_ms": 0.4724840400740504,
+   "fallback_ms": 0.48968405462801456,
+   "compiled_ms": 0.3846525214612484,
+   "check_overhead_pct": 3.640337682362449
+  }
+ ]
+}

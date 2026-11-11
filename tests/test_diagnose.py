@@ -3,8 +3,12 @@ from cholqr import diagnose
 
 
 def test_diagnose_cpu_quick():
+    old = torch.get_float32_matmul_precision()
     torch.set_float32_matmul_precision("highest")
-    d = diagnose(device="cpu", quick=True)
+    try:
+        d = diagnose(device="cpu", quick=True)
+    finally:
+        torch.set_float32_matmul_precision(old)
     for k in ("torch", "cholqr", "device", "device_name", "float32_matmul_precision", "gram_eps_over_u",
               "tf32_in_effect", "first_breakdown_kappa", "default_max_orth", "default_ok", "robust_available",
               "robust_orth_at_1e9", "timing_ms", "runtime_s"):
