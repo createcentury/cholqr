@@ -86,7 +86,7 @@ Shifted CholeskyQR3 (Fukaya et al., 2020) with three implementation choices:
 1. **Split-K Gram products (v0.4).** For m >= 2048, the Gram product Q^T Q is computed as a batched GEMM over
    256-row chunks plus a sum. cuBLAS otherwise runs this small-output, long-reduction GEMM almost serially (A100:
    1.13 ms -> 0.08 ms for 4 x 6144 x 8 fp32). Summing shorter partial products also improves fp32 accuracy.
-1. **Column scaling before every Gram product.** The shift is scale invariant. The first column norm is computed after dividing by the column maximum, so entries up to the FP32 maximum do not overflow (fixed in 0.5: before, entries above ~1e19 gave a zero Q).
+1. **Column scaling before every Gram product.** The shift is scale invariant. If a first-pass column norm overflows in FP32, that column is first divided by its maximum (branch-free; other columns are untouched, so results are bit-identical otherwise). Q is then correct for any finite input. R overflows when the true column norm exceeds the FP32 maximum, because it is not representable. Fixed in 0.5: before, entries above ~1e19 gave a zero Q.
 2. **Explicit r x r triangular inverse applied as one batched GEMM.** This replaces a slow triangular solve over m rows.
 3. **`cholesky_ex` with a per-matrix `torch.where` fallback.** The routine compiles with zero graph breaks. The
    `info` flags of these factorizations, plus the smallest diagonal entry of the last pass's factor, are the breakdown
@@ -102,11 +102,12 @@ Shifted CholeskyQR3 (Fukaya et al., 2020) with three implementation choices:
 These numbers were tested on 3072 x 210 inputs with geometric and power-law spectra (`tests/`).
 
 Where the cliff is (CPU, FP32 input, 276 columns, geometric spectrum, one draw per point; `on_breakdown="ignore"`):
-for 1024 rows it lies between cond(Y) 1e6 and 3e6, and for 4096 rows between 3e6 and 1e7. Orthogonality jumps from
-≈ 1e-5 to ≈ 25 within that half-decade. In every broken case we measured, a Cholesky factorization in pass 2 or 3
+for 1024 rows it lies between cond(Y) 1e6 and 2e6. For 4096 rows it sits at about 3e6: there, 2 of 4 random draws
+broke down and the other 2 did not, and all draws broke at 1e7. Orthogonality jumps from ≈ 1e-5 to ≈ 25 within
+that range. In every broken case we measured, a Cholesky factorization in pass 2 or 3
 failed (`info > 0`), and the 0.5 check catches exactly this. With the default fallback, orthogonality stays at
-≈ 2e-6–8e-6 up to cond(Y) = 1e10. The subspace error then grows like ≈ (3–7)·1e-10 · cond(Y) until it saturates, because
-rounding Y to FP32 already moves its range by that much; no QR can undo that.
+≈ 2e-6–8e-6 up to cond(Y) = 1e10. Q is then an accurate basis of the FP32-rounded Y. For large cond(Y) that range
+can differ substantially from the range of the original higher-precision matrix, and no QR can undo that.
 
 - **Theory vs. practice.** The guarantee of Fukaya et al. (2020, Thm. 4.1) needs m·n·u ≤ 1/64 and
   cond(Y) ≤ u⁻¹ / (96 (mn + n(n+1))). In FP32 (u = 2⁻²⁴), neither condition holds already at 4096 x 276: the second
@@ -126,8 +127,14 @@ rounding Y to FP32 already moves its range by that much; no QR can undo that.
 - Exactly rank-deficient or zero inputs (including zero columns) are flagged as breakdowns. With the default they
   are recomputed by Householder QR, so Q has orthonormal columns and Y = Q R still holds (R then has zero diagonal
   entries). With `on_breakdown="ignore"` they return finite outputs that are not orthonormal (0.4 behaviour).
-- **`"rcqr"` above cond(Y) ~ 1e8** does not break down, but with its single CholeskyQR pass, orthogonality degrades
-  gradually (≈ 3e-4 at 1e9). The check does not flag that.
+- **What the check does not catch.** It detects failed Cholesky factorizations and numerically rank-deficient
+  last-pass inputs. It does not catch gradual loss of orthogonality:
+  - `"rcqr"` above cond(Y) ~ 1e8: ≈ 3e-4 at 1e9.
+  - `"cqr2"` on some spectra near its limit: up to ≈ 2e-2 measured at cond 3e6 with a linear spectrum.
+  - Custom `passes` (e.g. `passes=1`): the check is calibrated for the default pass counts only.
+- **Cost for rank-deficient inputs.** If your inputs are routinely rank deficient (e.g. a sketch wider than the
+  matrix rank), every such call takes the fallback: one host synchronization plus a Householder QR. Use
+  `on_breakdown="ignore"` if you only need the range and not orthonormal extra columns.
 - **TF32:** if TF32 matmul is enabled (`torch.set_float32_matmul_precision("high")`, common in training scripts on Ampere and newer GPUs), the Gram products lose precision.
   - Measured on an A100-SXM4-80GB (torch 2.7.1, 3072 x 210, ‖QᵀQ − I‖_F):
 

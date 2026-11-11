@@ -264,3 +264,15 @@ def test_auto_compiles():
     for shape in [(500, 20), (3, 500, 20)]:
         f = torch.compile(lambda Y: cholesky_qr(Y, method="auto"), fullgraph=True, dynamic=False)
         assert orth_err(f(torch.randn(*shape))) < 5e-5
+
+
+def test_passes_zero_return_r():
+    Y = torch.randn(64, 8)
+    Q, R = cholesky_qr(Y, passes=0, return_r=True)
+    assert torch.equal(Q, Y) and torch.equal(R, torch.eye(8))
+
+
+def test_overflowing_column_norm_gives_orthonormal_q():
+    Y = (torch.rand(512, 32, generator=torch.Generator().manual_seed(0)) * 2 - 1) * 3e37
+    for method in ("scqr3", "cqr2", "rcqr"):
+        assert orth_err(cholesky_qr(Y, method=method, on_breakdown="ignore")) < 1e-4

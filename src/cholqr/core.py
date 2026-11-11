@@ -130,12 +130,13 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     return (Q, R) if return_r else Q
 
 
-def _colnorm(Q):
-    """Column norms (..., 1, r) without overflow: FP32 entries above ~1e19 would make Q.norm() return inf."""
-    if Q.dtype != torch.float32:
-        return Q.norm(dim=-2, keepdim=True)
-    a = Q.abs().amax(dim=-2, keepdim=True).clamp_min(1e-30)
-    return a * (Q / a).norm(dim=-2, keepdim=True)
+def _prescale(Q):
+    """Overflow guard for the first FP32 column norm. Returns (Q / a, a): a = 1 (exact, so results are bit-identical to
+    the plain norm) for columns whose norm is finite, and a = column max where Q.norm() overflows (FP32 entries above
+    ~1e19). Branch-free, so it compiles into the graph."""
+    d = Q.norm(dim=-2, keepdim=True)
+    a = torch.where(torch.isfinite(d), torch.ones_like(d), Q.abs().amax(dim=-2, keepdim=True).clamp_min(1e-30))
+    return Q / a, a
 
 
 def _repair(Y, Q, R, bad, method, robust, return_r, out_dtype, shift, passes, oversample, generator):
@@ -169,8 +170,10 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
     R = None
     if method == "rcqr":
         k = min(m, max(r, math.ceil(oversample * r / 128) * 128))
-        d0 = _colnorm(Q).clamp_min(1e-30)
+        Q, a0 = _prescale(Q) if Q.dtype == torch.float32 else (Q, None)
+        d0 = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)
         Q = Q / d0
+        d0 = d0 if a0 is None else d0 * a0                                 # total column scale (for R)
         S = torch.randn(k, m, device=Q.device, dtype=Q.dtype, generator=generator) / math.sqrt(k)
         R0 = torch.linalg.qr(S @ Q, mode="r")[1]                            # (..., r, r)
         dg = R0.diagonal(dim1=-2, dim2=-1)
@@ -187,8 +190,13 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
             Q = Q.float()
             R = R.float() if R is not None else None
             eye = eye.float()
-        d = (_colnorm(Q) if i == 0 else Q.norm(dim=-2, keepdim=True)).clamp_min(1e-30)   # (..., 1, r) column norms
+        a = None
+        if i == 0 and Q.dtype == torch.float32:
+            Q, a = _prescale(Q)
+        d = Q.norm(dim=-2, keepdim=True).clamp_min(1e-30)                 # (..., 1, r) column norms
         Q = Q / d
+        if a is not None:
+            d = d * a                                                     # total column scale (for R)
         G = _gram(Q)
         # columns have unit norm, so tr(G) = r (zero columns only make it smaller, i.e. the shift is conservative)
         if method == "scqr3" and i == 0:
@@ -209,6 +217,8 @@ def _cqr(Y, method, robust, return_r, out_dtype, shift, passes, oversample, gene
             R = F if R is None else F @ R
     dt = Y.dtype if out_dtype is None else out_dtype
     Q = Q.float().to(dt)
+    if return_r and R is None:                                           # passes=0
+        R = torch.eye(r, device=Q.device, dtype=Q.dtype).expand(*Y.shape[:-2], r, r)
     if bad is None:                                                       # passes=0
         bad = torch.zeros(Y.shape[:-2], dtype=torch.bool, device=Y.device)
     return Q, (R.float().to(dt) if return_r else None), bad

@@ -23,7 +23,8 @@ Usage::
 Notes:
 - The result differs from the original only by column signs, and the PowerSGD approximation P Q^T does not depend on
   them.
-- ``epsilon`` is accepted for API compatibility. Zero columns are handled by the column scaling, as in ``cholesky_qr``.
+- ``epsilon`` is accepted for API compatibility. Zero columns (and any other non-orthonormal result) are
+  caught by the orthogonality check and recomputed with Householder QR.
 - Disable TF32 for the Gram products (``torch.set_float32_matmul_precision("highest")``) if you need full accuracy.
 """
 import torch
@@ -46,7 +47,7 @@ def orthogonalize_(matrices: torch.Tensor, epsilon: float = 0) -> torch.Tensor:
     if b == 1:
         Q = torch.linalg.qr(X, mode="reduced")[0]
     else:
-        Q = cholesky_qr(X, method="cqr2")
+        Q = cholesky_qr(X, method="cqr2", on_breakdown="ignore")   # own check below (one sync)
         eye = torch.eye(r, device=X.device, dtype=X.dtype)
         bad = (Q.mT @ Q - eye).norm(dim=(-2, -1)) > _TOL
         if bool(bad.any()):                                                # rare: ill-conditioned input

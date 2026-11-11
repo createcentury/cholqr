@@ -11,10 +11,16 @@
     behaviour).
   - Every option except `"ignore"` costs one host synchronization per call in eager mode. Under `torch.compile` the
     check is skipped, so compiled graphs are unchanged.
-  - Inputs inside the range give bit-identical results to 0.4.
+  - Inputs inside the range give bit-identical results to 0.4 (checked for Q and R, all methods).
+  - Not caught: gradual loss of orthogonality without a failed factorization (rcqr above ~1e8, cqr2 near its
+    limit on some spectra, custom `passes`). See the README.
   - Exactly rank-deficient inputs (zero columns) now get an orthonormal Q with the default.
 - **Fix:** FP32 inputs with entries above ~1e19 overflowed the first column-norm computation and returned Q = 0.
-  The norm is now taken after dividing by the column maximum. This affects `scqr3`/`cqr2` and the pre-scaling of `rcqr`.
+  Columns whose norm overflows are now divided by their maximum first (branch-free; results for other inputs are
+  unchanged). This applies to all methods, including the pre-scaling of `rcqr`.
+- **Fix:** `passes=0, return_r=True` raised `AttributeError`; R is now the identity.
+- `contrib.powersgd` passes `on_breakdown="ignore"` because it has its own orthogonality check (one host sync per
+  call, as before).
 - README: measured position of the FP32 cliff (QRBOUND sweep), why the Fukaya et al. guarantee does not cover FP32
   at these sizes, and a caution on power-iterated sketches.
 
