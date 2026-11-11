@@ -14,6 +14,8 @@ jobs:
           - {os: ubuntu-latest, python: "3.11", torch: "2.5.*", numpy: "numpy"}
           - {os: ubuntu-latest, python: "3.12", torch: "2.7.*", numpy: "numpy"}
           - {os: ubuntu-latest, python: "3.13", torch: "",      numpy: "numpy"}
+          - {os: ubuntu-latest, python: "3.14", torch: "",      numpy: "numpy"}
+          - {os: ubuntu-latest, python: "3.15", torch: "",      numpy: "numpy"}
           - {os: macos-latest,  python: "3.12", torch: "",      numpy: "numpy"}
           - {os: windows-latest, python: "3.12", torch: "",     numpy: "numpy"}
     steps:

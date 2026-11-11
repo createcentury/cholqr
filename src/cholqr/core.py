@@ -30,20 +30,30 @@ _GRAM_SPLITK_MIN_ROWS = 2048   # below this the plain GEMM is used (A100 A/B mea
 
 
 def _tf32_active(Q: torch.Tensor) -> bool:
-    """True if a float32 CUDA matmul on Q would run in TF32 (torch.backends.cuda.matmul.allow_tf32)."""
-    if not (Q.is_cuda and Q.dtype == torch.float32):
+    """True if a float32 CUDA matmul on Q may run in TF32: an NVIDIA GPU with compute capability >= 8.0 (Ampere or newer)
+    and TF32 allowed (new API torch.backends.cuda.matmul.fp32_precision == "tf32", else the legacy allow_tf32 flag)."""
+    if not (Q.is_cuda and Q.dtype == torch.float32) or getattr(torch.version, "hip", None):
         return False
     try:
+        if torch.cuda.get_device_capability(Q.device)[0] < 8:
+            return False
+        fp = getattr(torch.backends.cuda.matmul, "fp32_precision", None)
+        if isinstance(fp, str) and fp not in ("", "none"):
+            return fp == "tf32"
         return bool(torch.backends.cuda.matmul.allow_tf32)
-    except Exception:                                     # attribute removed in some future torch: assume no TF32
+    except Exception:
         return False
 
 
 def _tf32_split(A: torch.Tensor):
-    """A = hi + lo with hi exactly representable in TF32 (10-bit mantissa, round to nearest) and lo = A - hi exact."""
+    """A = hi + lo with hi exactly representable in TF32 (10-bit mantissa, round half away from zero) and lo = A - hi,
+    exact by Sterbenz (A/2 <= hi <= 2A). Where rounding up overflows (|A| >= 3.40199e38) or A is not finite, hi = A and
+    lo = 0 (plain product for those entries)."""
     b = A.contiguous().view(torch.int32)
     hi = ((b + 0x1000) & ~0x1FFF).view(torch.float32)
-    return hi, A - hi
+    good = torch.isfinite(hi)
+    hi = torch.where(good, hi, A)
+    return hi, torch.where(good, A - hi, torch.zeros_like(A))
 
 
 def _mm(A: torch.Tensor, B: torch.Tensor, tf32: bool) -> torch.Tensor:
@@ -56,6 +66,15 @@ def _mm(A: torch.Tensor, B: torch.Tensor, tf32: bool) -> torch.Tensor:
     return Ah @ Bh + (Ah @ Bl + Al @ Bh)
 
 
+def _gram_mm(A: torch.Tensor, tf32: bool) -> torch.Tensor:
+    """A^T A; with TF32 active, Ah^T Ah + (M + M^T), M = Ah^T Al: two TF32 GEMMs and an exactly symmetric result."""
+    if not tf32:
+        return A.mT @ A
+    Ah, Al = _tf32_split(A)
+    M = Ah.mT @ Al
+    return Ah.mT @ Ah + (M + M.mT)
+
+
 def _gram(Q: torch.Tensor) -> torch.Tensor:
     """Q^T Q for tall Q (..., m, r) with a manual split-K over m.
 
@@ -66,13 +85,13 @@ def _gram(Q: torch.Tensor) -> torch.Tensor:
     m = Q.shape[-2]
     tf32 = _tf32_active(Q)
     if m < max(2 * _GRAM_CHUNK, _GRAM_SPLITK_MIN_ROWS):
-        return _mm(Q.mT, Q, tf32)
+        return _gram_mm(Q, tf32)
     q = m // _GRAM_CHUNK
     head = Q[..., : q * _GRAM_CHUNK, :].reshape(*Q.shape[:-2], q, _GRAM_CHUNK, Q.shape[-1])
-    G = _mm(head.mT, head, tf32).sum(-3)
+    G = _gram_mm(head, tf32).sum(-3)
     if m % _GRAM_CHUNK:
         tail = Q[..., q * _GRAM_CHUNK:, :]
-        G = G + _mm(tail.mT, tail, tf32)
+        G = G + _gram_mm(tail, tf32)
     return G
 
 
@@ -147,9 +166,9 @@ def cholesky_qr(Y: torch.Tensor, method: str = "scqr3", robust: bool = False, re
     # TF32 ("high") is compensated inside cholqr by 3xTF32 products (see _mm). "medium" (bfloat16 internal precision)
     # is not compensated and is warned about.
     if not _is_compiling() and Y.is_cuda and torch.get_float32_matmul_precision() == "medium":
-        warnings.warn("cholqr: float32_matmul_precision is 'medium' (bfloat16-based matmul). Gram products then lose "
-                      "most of their precision and orthogonality degrades; cholqr compensates TF32 ('high') but not "
-                      "'medium'. Use torch.set_float32_matmul_precision('highest') or 'high' around the call.",
+        warnings.warn("cholqr: float32_matmul_precision is 'medium', which may use bfloat16-based matmul on some "
+                      "backends. cholqr compensates TF32 (3xTF32) but not bfloat16 products. Use "
+                      "torch.set_float32_matmul_precision('highest') or 'high' around the call if accuracy matters.",
                       RuntimeWarning, stacklevel=2)
     m, r = Y.shape[-2], Y.shape[-1]
     if r > m:
