@@ -80,7 +80,7 @@ if step % 100 == 0:                              # occasionally, outside the com
 ## Formally verified core
 
 The exact-arithmetic core of the rounding analysis (the shifted first pass, the "indefinite part" lemma, the one-pass
-orthogonality bound, and the algebra of the `verify=True` certificate) is proved in Lean 4 with Mathlib, with no `sorry`
+orthogonality bound, the contraction into the next pass, and the algebra of the `verify=True` certificate) is proved in Lean 4 with Mathlib, with no `sorry`
 and only the standard axioms. The floating-point facts are hypotheses, proved on paper. See
 [lean/README.md](https://github.com/createcentury/cholqr/blob/main/lean/README.md) for exactly what is and is not formalized.
 
