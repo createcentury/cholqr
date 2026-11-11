@@ -56,8 +56,24 @@ but the certificate accepts is returned as is).
 | Apple M4 CPU | +27% (6.0 → 7.6 ms) | +25% (38 → 47 ms) | +27% (3.4 → 4.3 ms) | +35% (12.0 → 16.2 ms) |
 | Apple M4 GPU (MPS; check on CPU) | +75% (3.2 → 5.6 ms) | +83% (13.5 → 24.7 ms) | +38% (1.5 → 2.1 ms) | +134% (3.3 → 7.7 ms) |
 
-Single run on a loaded machine; CUDA not measured yet. The cost is one FP64 Gram product (2·m·r² flops per matrix);
-on GPUs with slow FP64 (consumer cards run FP64 at 1/64 of FP32) expect a larger relative cost.
+Single run on a loaded machine.
+
+On CUDA (cholqr 0.5.0, torch 2.8 / CUDA 12.8, precision "highest", median of 150 calls;
+`benchmarks/bench_verify_cost.py`, results in `benchmarks/results/verify_cost_cuda_2026-11/`):
+
+| shape | RTX 4090 (FP64 1:64) | A100 SXM (FP64 1:2) |
+|---|---|---|
+| 1 x 1024 x 64 | +31% (1.40 → 1.84 ms) | +29% (1.44 → 1.86 ms) |
+| 1 x 4096 x 276 | +70% (1.60 → 2.72 ms) | +14% (1.85 → 2.11 ms) |
+| 16 x 2048 x 128 | +51% (1.84 → 2.78 ms) | +20% (2.04 → 2.45 ms) |
+| 40 x 768 x 210 | +150% (2.33 → 5.81 ms) | +16% (4.06 → 4.71 ms) |
+| 8 x 4096 x 276 | +142% (4.30 → 10.42 ms) | +12% (7.85 → 8.80 ms) |
+| 16 x 1024 x 64 | +35% (1.59 → 2.14 ms) | +27% (1.63 → 2.07 ms) |
+| 4 x 8192 x 128 | +216% (1.83 → 5.77 ms) | +22% (2.24 → 2.73 ms) |
+
+The cost is one FP64 Gram product (2·m·r² flops per matrix), so it follows the FP64:FP32 ratio: small on data-centre
+GPUs, and on consumer cards (FP64 at 1/64 of FP32) larger than the factorization itself for big shapes. There,
+consider checking only occasionally with `cholqr.orthogonality_bound` (see the README).
 
 **What is not covered.** Orthogonality only: not the accuracy of the subspace range(Q) vs range(Y), nor of R
 (Y = QR). A residual certificate for ‖Y − QR‖ is future work. The default `tol=None` means 1e-4 for float32/float64
