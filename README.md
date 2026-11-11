@@ -65,6 +65,9 @@ if step % 100 == 0:                              # occasionally, outside the com
         Q = cholesky_qr(Y, verify=True)          # eager: certified, with fallback
 ```
 
+Measured on an RTX 4090: checking every 100 steps adds about 2% per step (every 10 steps 16-19%, every step
+2.6-2.8x, because FP64 is slow on consumer GPUs); no recompilations or graph breaks.
+
 **Example (randomized low-rank Muon on nanoGPT):** the measured cond(Y) is at most 70 without power iteration (h=0), so `"cqr2"` is safe there. With one power iteration (h=1) it reaches 4.5×10⁴, which needs `"scqr3"`.
 
 ## Which settings to use
