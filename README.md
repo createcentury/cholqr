@@ -147,11 +147,13 @@ can differ substantially from the range of the original higher-precision matrix,
   sweep, 1632 runs per GPU, torch 2.8): scqr3 then never breaks down up to cond(Y) = 1e10, but the default's
   orthogonality degrades to 1.7e-3 - 3.1e-3, 15-30% of runs exceed 1e-4, and the breakdown check cannot see it.
   Since 0.5, cholqr **compensates** TF32 on Ampere-or-newer NVIDIA GPUs with the 3xTF32 scheme (exact split of each
-  operand into a TF32 part and a remainder; two or three TF32 GEMMs; no global setting is changed). Measured on an RTX
-  4090 (same sweep): Gram error 25-119 u, runs above 1e-4 down from 399 to 24 of 1632 (worst 7.3e-4), compiled path
-  unchanged. This is **not full FP32**: the breakdown point moves from ~1e7 to ~1e6 and the check catches only a few of
-  the remaining degraded runs. On consumer GPUs (RTX 4090) the compensated call is about 2x slower than with
-  `"highest"`. **If you need full accuracy, wrap the call with `torch.set_float32_matmul_precision("highest")`.**
+  operand into a TF32 part and a remainder; two or three TF32 GEMMs; no global setting is changed). Measured (same
+  sweep): median Gram error 25-119 u on an RTX 4090 and 16-76 u on an H100; runs above 1e-4: 24 of 1632 (worst 7.3e-4)
+  on the RTX 4090 and 35 of 1632 (worst 1.0e-3) on the H100; compiled path unchanged. This is **not full FP32**: the
+  breakdown point moves from ~1e7 to ~1e6 and the check catches only a few of the remaining degraded runs. It is also
+  **slower than full FP32**: the compensated call takes about 1.3-1.7x (H100) and ~2x (RTX 4090) the time of the same
+  call at `"highest"`, so under TF32 cholqr 0.5 is slower than 0.4 was. There is no switch to get 0.4's plain-TF32
+  behaviour back. **If you need full accuracy, wrap the call with `torch.set_float32_matmul_precision("highest")`.**
 - Real dtypes only; complex inputs raise `TypeError`. Autograd works (gradients agree with Householder QR to ~1e-7 in tests). Runs on CUDA, CPU and Apple MPS.
 - Status: **experimental (0.x)**. The API may change. Issues and benchmarks on other GPUs are welcome.
 

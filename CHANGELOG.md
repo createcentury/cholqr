@@ -39,9 +39,11 @@
   a-posteriori orthogonality bound of Fukaya et al. 2020 eq. 3.33); the floating-point layer is not formalized.
 - **TF32:** when TF32 is active on an Ampere-or-newer NVIDIA GPU, the Gram and forming products use the 3xTF32 scheme
   (exact split into a TF32 part and a remainder; two or three TF32 GEMMs) without changing global settings. Measured on an
-  RTX 4090: Gram error 25-119 u instead of 3000-6700 u; runs with orthogonality above 1e-4 down from 399 to 24 of 1632
-  (worst 7.3e-4). Not full FP32: the breakdown point moves from ~1e7 to ~1e6, the check catches few of the remaining
-  degraded runs, and on consumer GPUs the call is ~2x slower than with "highest". Use "highest" for full accuracy.
+  RTX 4090 / H100: median Gram error 25-119 u / 16-76 u instead of 3000-6700 u; runs with orthogonality above 1e-4 down
+  from 399 to 24 (RTX 4090) and 35 (H100) of 1632 (worst 7.3e-4 / 1.0e-3). Not full FP32: the breakdown point moves
+  from ~1e7 to ~1e6 and the check catches few of the remaining degraded runs. **Behaviour change:** under TF32 a call is
+  now ~1.3-2x slower than at "highest" (and slower than 0.4 under TF32); there is no switch back to plain TF32. Use
+  "highest" for full accuracy and speed.
 - CI: Python 3.9-3.15, torch 2.1 to latest and nightly (Linux x86 and ARM), numpy 1 and 2, macOS, Windows.
 - Tests for execution modes: deterministic algorithms, inference_mode, vmap, double backward, default dtype float64,
   edge shapes, non-contiguous inputs, CUDA graph capture (with `on_breakdown="ignore"`), second GPU.
