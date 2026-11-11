@@ -7,8 +7,9 @@
 
 These numbers were tested on 3072 x 210 inputs with geometric and power-law spectra (`tests/`). The onset of the
 breakdown is not a fixed number: in the device sweep (single draws, `scqr3`, FP32, `on_breakdown="ignore"`) the first
-broken cond(Y) ranged from about 3e5 (clustered or staircase spectra) to about 3e7 (geometric and power-law at 64
-columns), and spike spectra often survived to 1e9 or beyond. The same input can break on one platform and not on
+broken cond(Y) ranged from about 3e5 (clustered or staircase spectra) to about 3e7 for most geometric and power-law
+cases (up to 1e8 for power-law spectra on the Apple M4 CPU), while linear and spike spectra often survived to 1e10 or
+did not break at all. The same input can break on one platform and not on
 another: 3072 x 210, geometric, cond 1e7 breaks on an Apple M4 CPU but not on an x86 CPU (AMD Ryzen 9 9950X); at
 1e8 it breaks on both. The check below does not depend on where the cliff is.
 
