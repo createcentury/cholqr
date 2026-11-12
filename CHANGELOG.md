@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1 (unreleased date - set at release)
+## 0.5.1 (2026-11-12)
 - **Fix: R under TF32.** With `return_r=True` and TF32 active, the accumulation of R used plain TF32 products, so R
   (not Q) had TF32-level accuracy (residual ||Y - QR|| ~ 4e-4 measured on an RTX 4090 at precision "high"). L^T D is now
   an elementwise column scaling and the product with the previous R uses the same 3xTF32 compensation as Q.
