@@ -87,3 +87,11 @@ If it fails, nothing in cholqr changes and the result is reported.
 
 One machine (Apple M4 CPU, Accelerate); the size dependence may differ with BLAS blocking and on GPUs. The function
 depends on $l$ only; the test keeps $m = 8l$ (the fit data had $m/l$ from 3.7 to 64 at $l \le 276$ and 8 above).
+
+## Addendum 1 (after the run, before the library change)
+
+Run 2026-11-12 08:37–10:24 JST, 4 shards x 2 threads on the Mac CPU. Shard 2 stopped silently at about 08:38 after
+78 complete inputs (no traceback, empty log; cause unknown, no partial input). It was resumed with the runner's
+resume logic. A first resume used 4 threads by mistake; the 2 inputs it wrote (8 records) were deleted unread and
+recomputed with the registered 2 threads. No other deviation; all 3672 runs present. Results:
+`benchmarks/results/thresh_size_2026-11/` (judge.txt).

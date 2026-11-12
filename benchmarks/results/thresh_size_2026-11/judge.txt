@@ -1,0 +1,54 @@
+runs: 3672; rule tau(l) = 384: 0.3246, 768: 0.4386, 1536: 0.5925
+S0 sanity (not a criterion): mirror vs cholqr._cqr bit-identical in 1836/1836 lib runs; 0.195 flag agrees in 1836/1836
+
+l = 384 (m = 3072), tau = 0.3246: runs 1224, non-broken 631, degraded 62, good 562, in between 7
+  T1 caught 62/62 (FN 0) -> PASS
+  T2 false alarms 1/562 (<= 2%) -> PASS
+  T3 (secondary, protocol band <= 0.5%): 1/562 -> PASS
+    FA: TS-3072-384-spike-17-3 scqr3 pw8 orth 3.71e-06 Lmin_last 0.287
+  (old rule 0.195, descriptive) FN 0/62, FA 0/562
+  c (first-order regime: Lmin_last < 0.6, 1e-6 < orth <= 1e-3) over 26 runs: max 78.6; fit A l^p = 117.6; ratio 0.67; margined C(l) = 176.8
+  (descriptive) largest Lmin_last among degraded: 0.148; smallest among good: 0.287
+    scqr3 lib: degraded 1 (FN 0), good 194 (FA 0)
+    scqr3 pw8: degraded 1 (FN 0), good 202 (FA 1)
+    cqr2  lib: degraded 30 (FN 0), good 81 (FA 0)
+    cqr2  pw8: degraded 30 (FN 0), good 85 (FA 0)
+
+l = 768 (m = 6144), tau = 0.4386: runs 1224, non-broken 620, degraded 70, good 534, in between 16
+  T1 caught 70/70 (FN 0) -> PASS
+  T2 false alarms 1/534 (<= 2%) -> PASS
+  T3 (secondary, protocol band <= 0.5%): 1/534 -> PASS
+    FA: TS-6144-768-linear-20-3 scqr3 lib orth 5.90e-06 Lmin_last 0.436
+  (old rule 0.195, descriptive) FN 2/70, FA 0/534
+  c (first-order regime: Lmin_last < 0.6, 1e-6 < orth <= 1e-3) over 29 runs: max 142.0; fit A l^p = 214.6; ratio 0.66; margined C(l) = 322.7
+  (descriptive) largest Lmin_last among degraded: 0.267; smallest among good: 0.436
+    scqr3 lib: degraded 4 (FN 0), good 185 (FA 1)
+    scqr3 pw8: degraded 4 (FN 0), good 187 (FA 0)
+    cqr2  lib: degraded 31 (FN 0), good 79 (FA 0)
+    cqr2  pw8: degraded 31 (FN 0), good 83 (FA 0)
+
+l = 1536 (m = 12288), tau = 0.5925: runs 1224, non-broken 601, degraded 102, good 464, in between 35
+  T1 caught 102/102 (FN 0) -> PASS
+  T2 false alarms 1/464 (<= 2%) -> PASS
+  T3 (secondary, protocol band <= 0.5%): 1/464 -> PASS
+    FA: TS-12288-1536-linear-18-3 scqr3 pw8 orth 7.73e-06 Lmin_last 0.572
+  (old rule 0.195, descriptive) FN 13/102, FA 0/464
+  c (first-order regime: Lmin_last < 0.6, 1e-6 < orth <= 1e-3) over 50 runs: max 462.7; fit A l^p = 391.6; ratio 1.18; margined C(l) = 589.0
+  (descriptive) largest Lmin_last among degraded: 0.368; smallest among good: 0.572
+    scqr3 lib: degraded 17 (FN 0), good 159 (FA 0)
+    scqr3 pw8: degraded 16 (FN 0), good 162 (FA 1)
+    cqr2  lib: degraded 34 (FN 0), good 72 (FA 0)
+    cqr2  pw8: degraded 35 (FN 0), good 71 (FA 0)
+
+N1 non-regression on the 0.195 rule's validation data (in sample: these data were used for the fit)
+  CPU QRROUND3: degraded caught 155/155 (0.195: 155; lost 0), false alarms 4/1931 (0.195: 4) -> PASS
+  MPS CERT: degraded caught 56/56 (0.195: 56; lost 0), false alarms 0/760 (0.195: 0) -> PASS
+
+Registered criteria (gate for the library change): T1 and T2 PASS at every fresh size, and N1 PASS -> PASS
+
+Registered predictions:
+  P1 l=384: T1 PASS with FN 0, FA <= 2: PASS, FN 0, FA 1 -> PASS
+  P2 l=768: T1 PASS with FN 0, FA <= 3: PASS, FN 0, FA 1 -> PASS
+  P3 l=1536: T1 PASS and T2 PASS: PASS, PASS (FN 0, FA 1) -> PASS
+  P4 max c within [0.5, 2] x A l^p at every fresh size: 384: 0.67, 768: 0.66, 1536: 1.18 -> PASS
+  P5 the old rule 0.195 misses >= 1 degraded run at l = 768 and at l = 1536: FN 2, 13 -> PASS
