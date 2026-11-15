@@ -74,3 +74,10 @@ Q = cholesky_qr(Y, robust=True)  # ill-conditioned inputs, cond(Y) up to >= 1e8 
 ```
 
 [Back to README](../README.md)
+
+## How the detector threshold was chosen
+
+The check is a failed factorization, or a last-pass Cholesky diagonal below 0.195. A pass on X leaves orthogonality
+about c·u/Lmin², with c ≈ 18–33 measured, so 0.195 targets 1e-4 with a 2x margin on c. It reuses the small r x r
+Cholesky factors the passes already compute, so it adds no Gram product and no extra pass over the data. This is
+empirical (calibrated and validated, not proved).

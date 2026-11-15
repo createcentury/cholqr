@@ -27,3 +27,12 @@ keywords:
   - rounding error analysis
   - PyTorch
   - GPU
+references:
+  - type: report
+    title: "Shifted CholeskyQR in FP32: measured breakdown, an a-posteriori bound, and an FP64 orthogonality check in cholqr"
+    authors:
+      - family-names: Fukuda
+        given-names: Soki
+    year: 2026
+    doi: 10.5281/zenodo.24182849
+    notes: "Technical note, v1. Companion to the software."
