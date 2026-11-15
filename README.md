@@ -2,7 +2,31 @@
 
 Fast, compile-friendly **shifted CholeskyQR3** for batched tall-skinny matrices in PyTorch.
 It is a drop-in for `torch.linalg.qr(Y, mode="reduced")[0]` when you only need an orthonormal basis of `range(Y)`,
-for example in randomized SVD and sketching, low-rank optimizers such as randomized Muon, or subspace iteration.
+for example in randomized SVD and sketching, low-rank optimizers such as randomized Muon, PowerSGD-style gradient
+compression, or subspace iteration.
+
+**The problem.** Orthonormalizing many tall-skinny matrices is a common inner step in those methods. Householder QR
+(`torch.linalg.qr`) is accurate but slow on GPUs for large batches. CholeskyQR needs only a few matrix products and
+small Cholesky factorizations, so it is much faster, but it can lose orthogonality or break down when the input is
+ill-conditioned, especially in FP32. cholqr implements the shifted CholeskyQR3 variant, detects most breakdowns at run
+time, and can certify its output with an FP64 check (`verify=True`).
+
+**Use it** for batches or larger shapes on a GPU when you need `Q` (an orthonormal basis of `range(Y)`).
+**Prefer `torch.linalg.qr`** for a single small matrix (`method="auto"` does this for you), and use `robust=True` or
+`verify=True` if the inputs may be very ill-conditioned. How far each claim can be trusted is summarized in
+[How much to trust this](#how-much-to-trust-this); the analysis is in the accompanying
+[technical note](https://doi.org/10.5281/zenodo.24182849).
+
+## Install
+
+```bash
+pip install cholqr        # or: pip install git+https://github.com/createcentury/cholqr
+uv add cholqr             # in a uv project (or: uv pip install cholqr)
+```
+
+cholqr depends only on PyTorch (>= 2.1). If you need a specific CUDA or ROCm build of PyTorch, install that first.
+
+## Quick start
 
 ```python
 import torch
@@ -36,14 +60,13 @@ dispatches it there automatically. The breakdown check adds 0–7% ([details](ht
 > ([details](https://github.com/createcentury/cholqr/blob/main/docs/accuracy.md)).
 
 **Breakdown detection and fallback (0.5).** CholeskyQR breaks down when the input is too ill-conditioned for the
-chosen method. Before 0.5 the result then silently lost orthogonality. In eager mode, `cholqr` now detects this and
-recomputes only the affected matrices: first with an FP64 first pass, then with Householder QR. The check (a failed factorization, or a last-pass Cholesky
-diagonal below 0.195: a pass on X leaves orthogonality ~ c·u/Lmin² with c ≈ 18–33 measured, so 0.195 targets 1e-4 with
-a 2x margin on c) reuses the small r x r Cholesky factors the passes already compute, so it adds no Gram product and no extra pass over
-the data. It does cost one host synchronization per call. Choose the behaviour with `on_breakdown`:
-`"fallback"` (default), `"warn"`, `"raise"` or `"ignore"` (the 0.4 behaviour, no synchronization). Inside
-`torch.compile` the check is skipped. This detector is **empirical** (calibrated and validated, not proved; under
-TF32 it misses most degraded runs). For a guarantee use `verify=True` ([Certified orthogonality](https://github.com/createcentury/cholqr/blob/main/docs/verify.md)).
+chosen method. In eager mode, `cholqr` detects this and recomputes only the affected matrices: first with an FP64 first
+pass, then with Householder QR. The check reuses the small r x r Cholesky factors the passes already compute (no extra
+Gram product), but costs one host synchronization per call. Choose the behaviour with `on_breakdown`: `"fallback"`
+(default), `"warn"`, `"raise"` or `"ignore"` (the 0.4 behaviour, no synchronization). Inside `torch.compile` the check
+is skipped. This detector is **empirical** (calibrated and validated, not proved; under TF32 it misses most degraded
+runs). For a guarantee use `verify=True` ([Certified orthogonality](https://github.com/createcentury/cholqr/blob/main/docs/verify.md)).
+How the threshold was chosen: [Accuracy](https://github.com/createcentury/cholqr/blob/main/docs/accuracy.md).
 
 | method | passes | reliable range in FP32 (tested) | use when |
 |---|---|---|---|
@@ -85,6 +108,25 @@ Measured on an RTX 4090: checking every 100 steps adds about 2% per step (every 
 | no host synchronization at all | `on_breakdown="ignore"` | no check, no repair |
 | multi-process training (DDP, FSDP, ZeRO) | not `on_breakdown="raise"`; make any fallback decision collective | see [Distributed training](https://github.com/createcentury/cholqr/blob/main/docs/powersgd.md#distributed-training-keep-decisions-identical-on-every-rank) |
 
+## How much to trust this
+
+| level | what | where |
+|---|---|---|
+| **Proved** (Lean 4) | the exact-arithmetic core of the rounding analysis: shifted first pass, per-pass orthogonality bound, contraction into the next pass, algebra of the `verify=True` certificate | [lean/](https://github.com/createcentury/cholqr/blob/main/lean/README.md) |
+| **Proved on paper, used as hypotheses** | floating-point facts (rounding of the Gram product, the Cholesky factor, the normalisation) | [technical note](https://doi.org/10.5281/zenodo.24182849) |
+| **Certified at run time** | `verify=True`: an FP64 bound on `‖QᵀQ − I‖_F` for the returned tensor. Rigorous if the note's assumptions (H0)–(H2) hold; (H2), on the FP64 product actually executed, is assumed, not checked | [verify.md](https://github.com/createcentury/cholqr/blob/main/docs/verify.md) |
+| **Measured** (pre-registered) | where FP32 `scqr3` breaks, across CPUs and GPUs; speed-ups; TF32 behaviour | [benchmarks/results](https://github.com/createcentury/cholqr/tree/main/benchmarks/results), the note |
+| **Empirical, not proved** | the run-time detector's threshold and the rule for when an FP32 Cholesky fails | [accuracy.md](https://github.com/createcentury/cholqr/blob/main/docs/accuracy.md) |
+
+There is **no a-priori guarantee** that a given FP32 input will not break down at sizes such as 4096 x 276; the note
+explains why one that holds on all hardware is out of reach. What you get instead is detection (empirical) and
+certification after the fact (`verify=True`).
+
+## Paper
+
+> S. Fukuda. *Shifted CholeskyQR in FP32: measured breakdown, an a-posteriori bound, and an FP64 orthogonality check in
+> cholqr.* Technical note, v1, 2026. doi:[10.5281/zenodo.24182849](https://doi.org/10.5281/zenodo.24182849)
+
 ## Documentation
 
 | page | contents |
@@ -104,24 +146,15 @@ orthogonality bound, the contraction into the next pass, and the algebra of the 
 and only the standard axioms. The floating-point facts are hypotheses, proved on paper. See
 [lean/README.md](https://github.com/createcentury/cholqr/blob/main/lean/README.md) for exactly what is and is not formalized.
 
-## Install
-
-```bash
-pip install cholqr        # or: pip install git+https://github.com/createcentury/cholqr
-uv add cholqr             # in a uv project (or: uv pip install cholqr)
-```
-
-cholqr depends only on PyTorch (>= 2.1). If you need a specific CUDA or ROCm build of PyTorch, install that first.
-
 ## Citation
 
 If you use cholqr, please cite the software ([CITATION.cff](https://github.com/createcentury/cholqr/blob/main/CITATION.cff)):
 
 > S. Fukuda. *cholqr: fast, compile-friendly shifted CholeskyQR3 for batched tall-skinny matrices in PyTorch.*
-> Software, version 0.5.0, 2026. doi:[10.5281/zenodo.24144958](https://doi.org/10.5281/zenodo.24144958)
-> (all versions; version 0.5.0: [10.5281/zenodo.24144959](https://doi.org/10.5281/zenodo.24144959)).
+> Software, version 0.5.1, 2026. doi:[10.5281/zenodo.24157501](https://doi.org/10.5281/zenodo.24157501)
+> (all versions: [10.5281/zenodo.24144958](https://doi.org/10.5281/zenodo.24144958)),
 
-and the algorithm:
+the technical note (see [Paper](#paper)), and the algorithm:
 
 > T. Fukaya, R. Kannan, Y. Nakatsukasa, Y. Yamamoto, Y. Yanagisawa. *Shifted Cholesky QR for computing the QR
 > factorization of ill-conditioned matrices.* SIAM J. Sci. Comput. 42(1):A477–A503, 2020.
