@@ -62,10 +62,10 @@ for ax, shape in zip(axes.flat, SHAPES):
     for s in ax.spines.values():
         s.set_visible(False)
 
-fig.suptitle("Speed-up over torch.linalg.qr (FP32, default call)", x=0.012, ha="left", fontsize=15, color=INK,
+fig.suptitle("cholqr speed-up over torch.linalg.qr (FP32, default call)", x=0.012, ha="left", fontsize=15, color=INK,
              fontweight="semibold")
-fig.legend(handles=[plt.Line2D([], [], color=FASTER, lw=2.5, marker="o", label="cholqr faster"),
-                    plt.Line2D([], [], color=SLOWER, lw=2.5, marker="o", label="cholqr slower")],
+fig.legend(handles=[plt.Line2D([], [], color=FASTER, lw=2.5, marker="o", label="faster than torch.linalg.qr"),
+                    plt.Line2D([], [], color=SLOWER, lw=2.5, marker="o", label="slower than torch.linalg.qr")],
            loc="upper left", ncol=2, frameon=False, fontsize=11, labelcolor=INK2, bbox_to_anchor=(0.005, 0.962))
 fig.text(0.012, 0.006, "Measured, one run per device, cholqr 0.5.0. torch 2.8.0+cu128 (NVIDIA), 2.10 ROCm 7.1.1 (MI350X), "
          "2.15.0 (Apple M4).\n"
