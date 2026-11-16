@@ -32,7 +32,7 @@ for f in glob.glob(os.path.join(SRC, "*.json")):
     key = os.path.splitext(os.path.basename(f))[0]
     data[key] = {tuple(r["shape"]): r["torch_qr_ms"] / r["fallback_ms"] for r in d["rows"]}
 
-fig, axes = plt.subplots(2, 3, figsize=(12, 7.2), sharex=True, sharey=True, facecolor=SURFACE)
+fig, axes = plt.subplots(3, 2, figsize=(9, 10.5), sharex=True, sharey=True, facecolor=SURFACE)
 ys = list(range(len(ORDER)))[::-1]
 for ax, shape in zip(axes.flat, SHAPES):
     ax.set_facecolor(SURFACE)
@@ -40,37 +40,38 @@ for ax, shape in zip(axes.flat, SHAPES):
     for y, key in zip(ys, ORDER):
         v = data[key].get(shape)
         if v is None:
-            ax.text(1.05, y, "not measured", va="center", ha="left", fontsize=7.5, color=INK2, style="italic")
+            ax.text(1.08, y, "not measured", va="center", ha="left", fontsize=9.5, color=INK2, style="italic")
             continue
         c = FASTER if v >= 1 else SLOWER
-        ax.plot([1, v], [y, y], color=c, lw=2, solid_capstyle="round", zorder=2)
-        ax.scatter([v], [y], s=42, color=c, edgecolor=SURFACE, linewidth=1.5, zorder=3)
+        ax.plot([1, v], [y, y], color=c, lw=2.5, solid_capstyle="round", zorder=2)
+        ax.scatter([v], [y], s=64, color=c, edgecolor=SURFACE, linewidth=1.5, zorder=3)
         ax.text(v * (1.14 if v >= 1 else 0.88), y, f"{v:.1f}x", va="center", ha="left" if v >= 1 else "right",
-                fontsize=8, color=INK)
+                fontsize=10.5, color=INK)
     b, n, r = shape
-    ax.set_title(f"{b} x {n} x {r}" + ("  (batch)" if b > 1 else "  (single matrix)"), fontsize=10, color=INK,
-                 loc="left")
+    ax.set_title(f"{b} x {n} x {r}" + ("  (batch)" if b > 1 else "  (single matrix)"), fontsize=12, color=INK,
+                 loc="left", fontweight="semibold")
     ax.set_xscale("log")
-    ax.set_xlim(0.14, 40)
+    ax.set_xlim(0.07, 45)
     ax.set_xticks([0.25, 1, 4, 16])
-    ax.set_xticklabels(["0.25x", "1x", "4x", "16x"], fontsize=8, color=INK2)
+    ax.set_xticklabels(["0.25x", "1x", "4x", "16x"], fontsize=10.5, color=INK2)
     ax.minorticks_off()
     ax.set_yticks(ys)
-    ax.set_yticklabels([NAMES[k] for k in ORDER], fontsize=8.5, color=INK2)
+    ax.set_yticklabels([NAMES[k] for k in ORDER], fontsize=10.5, color=INK2)
     ax.tick_params(length=0)
     ax.grid(axis="x", color=GRID, lw=0.8, zorder=0)
     for s in ax.spines.values():
         s.set_visible(False)
 
-fig.suptitle("cholqr speed-up over torch.linalg.qr (FP32, precision \"highest\")", x=0.01, ha="left", fontsize=13,
-             color=INK, fontweight="semibold")
-fig.legend(handles=[plt.Line2D([], [], color=FASTER, lw=2, marker="o", label="cholqr faster"),
-                    plt.Line2D([], [], color=SLOWER, lw=2, marker="o", label="cholqr slower")],
-           loc="upper right", ncol=2, frameon=False, fontsize=9, labelcolor=INK2, bbox_to_anchor=(0.99, 0.985))
-fig.text(0.01, 0.005, "Default call incl. breakdown check, ratio of median ms. cholqr 0.5.0. torch 2.8.0+cu128 on NVIDIA, 2.10.0 (ROCm 7.1.1) on "
-         "MI350X, 2.15.0 on Apple M4.\nSource: benchmarks/results/overhead_2026-11/*.json (benchmarks/bench_overhead.py).",
-         fontsize=7.5, color=INK2, va="bottom")
-fig.tight_layout(rect=(0, 0.045, 1, 0.95))
+fig.suptitle("Speed-up over torch.linalg.qr (FP32, default call)", x=0.012, ha="left", fontsize=15, color=INK,
+             fontweight="semibold")
+fig.legend(handles=[plt.Line2D([], [], color=FASTER, lw=2.5, marker="o", label="cholqr faster"),
+                    plt.Line2D([], [], color=SLOWER, lw=2.5, marker="o", label="cholqr slower")],
+           loc="upper left", ncol=2, frameon=False, fontsize=11, labelcolor=INK2, bbox_to_anchor=(0.005, 0.962))
+fig.text(0.012, 0.006, "Measured, one run per device, cholqr 0.5.0. torch 2.8.0+cu128 (NVIDIA), 2.10 ROCm 7.1.1 (MI350X), "
+         "2.15.0 (Apple M4).\n"
+         "Data: benchmarks/results/overhead_2026-11/. Regenerate: python benchmarks/plot_speedup.py",
+         fontsize=9, color=INK2, va="bottom")
+fig.tight_layout(rect=(0, 0.04, 1, 0.925))
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
-fig.savefig(OUT, dpi=170, facecolor=SURFACE)
+fig.savefig(OUT, dpi=110, facecolor=SURFACE)
 print("wrote", os.path.normpath(OUT))
