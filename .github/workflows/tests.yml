@@ -1,7 +1,28 @@
 name: tests
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "benchmarks/**"
+      - "lean/**"
+      - "CITATION.cff"
+      - "LICENSE"
+      - ".claude/**"
+      - ".github/pull_request_template.md"
+      - ".github/dependabot.yml"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "benchmarks/**"
+      - "lean/**"
+      - "CITATION.cff"
+      - "LICENSE"
+      - ".claude/**"
+      - ".github/pull_request_template.md"
+      - ".github/dependabot.yml"
 jobs:
   test:
     runs-on: ${{ matrix.os }}
