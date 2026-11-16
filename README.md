@@ -53,6 +53,10 @@ fast = torch.compile(cholesky_qr, fullgraph=True)  # single graph, no host synch
 cholqr pays off for batches and larger shapes; for one small matrix `torch.linalg.qr` is faster, and `method="auto"`
 dispatches it there automatically. The breakdown check adds 0–7% ([details](https://github.com/createcentury/cholqr/blob/main/docs/devices.md)).
 
+![cholqr speed-up over torch.linalg.qr on nine devices and six shapes](https://raw.githubusercontent.com/createcentury/cholqr/main/docs/images/speedup.png)
+
+*Measured, not proved: one run per device (`benchmarks/results/overhead_2026-11/`), regenerate with `python benchmarks/plot_speedup.py`. The MI350X was not measured on two of the six shapes.*
+
 > **TF32 warning.** Many training scripts set `torch.set_float32_matmul_precision("high")` (TF32). With plain TF32
 > products, CholeskyQR does not fail, but orthogonality silently degrades to ~1e-3 and the breakdown check cannot see
 > it. cholqr 0.5 compensates (3xTF32), which removes most but not all of the loss and is slower than full FP32. If you
